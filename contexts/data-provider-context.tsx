@@ -2,9 +2,10 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
+import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { getOrCreateDemoTransactions } from '@/lib/demo-data'
-import { fetchFullTransactions, fetchRecentTransactions, SheetsApiError } from '@/lib/sheets'
+import { describeSpreadsheetAccessError, fetchFullTransactions, fetchRecentTransactions, SheetsApiError } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { Transaction } from '@/lib/types'
 
@@ -12,6 +13,8 @@ export type DataMode = 'google' | 'demo'
 
 export interface FinanceDataProvider {
   mode: DataMode
+  // Part of query keys so switching spreadsheets never serves another sheet's data
+  sourceId: string | null
   getRecentTransactions: () => Promise<Transaction[]>
   getFullTransactions: () => Promise<Transaction[]>
   reloadData: (scope?: FinanceDataScope) => Promise<void>
@@ -19,18 +22,33 @@ export interface FinanceDataProvider {
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
 
-function buildGoogleProvider(accessToken: string | null, refreshSession: () => Promise<boolean>): FinanceDataProvider {
+function buildGoogleProvider(
+  accessToken: string | null,
+  spreadsheetId: string | null,
+  refreshSession: () => Promise<boolean>,
+  reportAccessError: (message: string) => void
+): FinanceDataProvider {
   const fetchWithRefresh = async (
     currentToken: string | null,
-    fetcher: (token: string) => Promise<Transaction[]>
+    fetcher: (token: string, spreadsheetId: string) => Promise<Transaction[]>
   ) => {
     if (!currentToken) {
       throw new Error('Not authenticated')
     }
 
+    if (!spreadsheetId) {
+      throw new Error('No spreadsheet selected')
+    }
+
     try {
-      return await fetcher(currentToken)
+      return await fetcher(currentToken, spreadsheetId)
     } catch (error) {
+      const accessError = describeSpreadsheetAccessError(error)
+      if (accessError) {
+        reportAccessError(accessError)
+        throw new Error(accessError)
+      }
+
       if (!(error instanceof SheetsApiError) || error.status !== 401) {
         throw error
       }
@@ -45,12 +63,13 @@ function buildGoogleProvider(accessToken: string | null, refreshSession: () => P
         throw new Error('Not authenticated')
       }
 
-      return fetcher(nextToken)
+      return fetcher(nextToken, spreadsheetId)
     }
   }
 
   return {
     mode: 'google',
+    sourceId: spreadsheetId,
     async getRecentTransactions() {
       const cached = await getCachedRecentTransactions()
 
@@ -96,6 +115,7 @@ function buildDemoProvider(): FinanceDataProvider {
 
   return {
     mode: 'demo',
+    sourceId: null,
     async getRecentTransactions() {
       const allTransactions = await loadTransactions()
       return allTransactions.slice(0, 90)
@@ -111,14 +131,16 @@ function buildDemoProvider(): FinanceDataProvider {
 
 export function FinanceDataProvider({ children }: { children: ReactNode }) {
   const { mode, accessToken, refreshSession } = useAuth()
+  const { spreadsheet, reportAccessError } = useSpreadsheet()
+  const spreadsheetId = spreadsheet?.id ?? null
 
   const provider = useMemo(() => {
     if (mode === 'demo') {
       return buildDemoProvider()
     }
 
-    return buildGoogleProvider(accessToken, refreshSession)
-  }, [accessToken, mode, refreshSession])
+    return buildGoogleProvider(accessToken, spreadsheetId, refreshSession, reportAccessError)
+  }, [accessToken, mode, refreshSession, reportAccessError, spreadsheetId])
 
   return <DataProviderContext.Provider value={provider}>{children}</DataProviderContext.Provider>
 }

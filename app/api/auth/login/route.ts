@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       access_token: tokens.access_token,
       expiry_date: tokens.expiry_date,
+      scope: tokens.scope,
     })
   } catch (error: any) {
     console.error('Login error:', error)

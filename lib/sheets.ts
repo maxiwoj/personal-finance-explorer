@@ -1,4 +1,4 @@
-import { SPREADSHEET_ID, SHEETS_API_BASE, SHEETS } from './config'
+import { SHEETS_API_BASE, SHEETS } from './config'
 import type { Transaction } from './types'
 
 export class SheetsApiError extends Error {
@@ -134,10 +134,11 @@ function parseRow(row: string[]): Transaction | null {
 
 export async function fetchSheetData(
   accessToken: string,
+  spreadsheetId: string,
   sheetName: string
 ): Promise<Transaction[]> {
   const range = `${sheetName}!A:H`
-  const url = `${SHEETS_API_BASE}/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
   
   const response = await fetch(url, {
     headers: {
@@ -171,10 +172,26 @@ export async function fetchSheetData(
     .filter((t): t is Transaction => t !== null)
 }
 
-export async function fetchRecentTransactions(accessToken: string): Promise<Transaction[]> {
-  return fetchSheetData(accessToken, SHEETS.RECENT)
+export async function fetchRecentTransactions(accessToken: string, spreadsheetId: string): Promise<Transaction[]> {
+  return fetchSheetData(accessToken, spreadsheetId, SHEETS.RECENT)
 }
 
-export async function fetchFullTransactions(accessToken: string): Promise<Transaction[]> {
-  return fetchSheetData(accessToken, SHEETS.FULL)
+export async function fetchFullTransactions(accessToken: string, spreadsheetId: string): Promise<Transaction[]> {
+  return fetchSheetData(accessToken, spreadsheetId, SHEETS.FULL)
+}
+
+// 403/404: the app has no drive.file grant for this sheet (never picked, or not shared).
+// 400 "Unable to parse range": the sheet lacks the template's tabs.
+export function describeSpreadsheetAccessError(error: unknown): string | null {
+  if (!(error instanceof SheetsApiError)) return null
+
+  if (error.status === 403 || error.status === 404) {
+    return 'This app cannot access the spreadsheet. Select it with the picker to grant access.'
+  }
+
+  if (error.status === 400 && /unable to parse range/i.test(error.message)) {
+    return `The spreadsheet does not match the template: it needs "${SHEETS.FULL}" and "${SHEETS.RECENT}" tabs.`
+  }
+
+  return null
 }

@@ -24,6 +24,7 @@ export async function POST() {
     return NextResponse.json({
       access_token: credentials.access_token,
       expiry_date: credentials.expiry_date,
+      scope: credentials.scope,
     })
   } catch (error: any) {
     console.error('Refresh error:', error)
