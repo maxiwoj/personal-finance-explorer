@@ -46,7 +46,7 @@ export function SpreadsheetSetup() {
           </Button>
 
           <p className="text-xs text-center text-muted-foreground">
-            New here? Copy the template to your Drive (it includes the linked form), then select the copy above.
+            New here? Copy the template to your Drive, then select the copy above.
           </p>
 
           <div className="flex justify-center pt-4 border-t">
