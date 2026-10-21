@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
-import { SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
+import { REPO_URL, SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -61,6 +61,13 @@ export function SpreadsheetSetup() {
               Sign Out
             </Button>
           </div>
+
+          <p className="text-xs text-center text-muted-foreground">
+            Open source on{' '}
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors underline underline-offset-4">
+              GitHub
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>

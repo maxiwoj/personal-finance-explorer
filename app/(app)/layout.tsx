@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { Nav } from '@/components/nav'
+import { Footer } from '@/components/footer'
 import { SpreadsheetSetup } from '@/components/spreadsheet-setup'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -41,6 +42,7 @@ export default function AppLayout({
       <main className="flex-1 container px-4 md:px-6 lg:px-8 py-6 mx-auto max-w-7xl overflow-x-hidden">
         {children}
       </main>
+      <Footer />
     </div>
   )
 }
