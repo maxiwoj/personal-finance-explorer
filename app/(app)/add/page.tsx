@@ -1,38 +1,57 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { TransactionForm } from '@/components/transaction-form'
+import { getCategoryColor } from '@/lib/colors'
+import type { TransactionInput } from '@/lib/types'
 import { CheckCircle2 } from 'lucide-react'
 
 export default function AddTransactionPage() {
-  // Bumping the key remounts the form, clearing it for the next entry
-  const [formKey, setFormKey] = useState(0)
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved] = useState<TransactionInput | null>(null)
 
   return (
-    <div className="max-w-md mx-auto space-y-4">
+    <div className="max-w-xl mx-auto">
       <Card>
-        <CardHeader>
-          <CardTitle>Add Transaction</CardTitle>
-          <CardDescription>Saved to your spreadsheet with the current date and time.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {saved && (
-            <Alert>
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertDescription>Transaction added.</AlertDescription>
-            </Alert>
-          )}
-          <TransactionForm
-            key={formKey}
-            onSaved={() => {
-              setSaved(true)
-              setFormKey(key => key + 1)
-            }}
-          />
-        </CardContent>
+        {saved ? (
+          <CardContent className="py-10 flex flex-col items-center text-center gap-4">
+            <CheckCircle2 className="h-14 w-14 text-emerald-500" />
+            <div className="space-y-1">
+              <p className="text-lg font-semibold">Transaction added</p>
+              <p className="text-3xl font-black tracking-tight">
+                {saved.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}
+                <span className="text-sm font-bold text-muted-foreground ml-1 uppercase">{saved.currency}</span>
+              </p>
+              <p className="text-base font-medium">{saved.what}</p>
+              <span
+                className="inline-block px-2 py-0.5 text-xs font-bold rounded-md text-white"
+                style={{ backgroundColor: getCategoryColor(saved.category.toLowerCase()) }}
+              >
+                {saved.category.toLowerCase()}
+              </span>
+            </div>
+            <div className="flex w-full gap-2 pt-2">
+              <Button variant="outline" size="lg" className="flex-1" asChild>
+                <Link href="/transactions">View transactions</Link>
+              </Button>
+              <Button size="lg" className="flex-1" onClick={() => setSaved(null)} autoFocus>
+                Add another
+              </Button>
+            </div>
+          </CardContent>
+        ) : (
+          <>
+            <CardHeader>
+              <CardTitle>Add Transaction</CardTitle>
+              <CardDescription>Saved to your spreadsheet with the current date and time.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TransactionForm onSaved={setSaved} />
+            </CardContent>
+          </>
+        )}
       </Card>
     </div>
   )

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Transaction } from '@/lib/types'
 import { getCategoryColor } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -51,7 +52,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-sm p-0 overflow-hidden border-none shadow-2xl">
+      <DialogContent className={cn(isEditing ? 'sm:max-w-lg max-h-[90vh] overflow-y-auto' : 'sm:max-w-sm overflow-hidden', 'p-0 border-none shadow-2xl')}>
         <DialogHeader className="p-4 pb-2 border-b bg-muted/30">
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-primary" />
@@ -61,7 +62,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
 
         {isEditing ? (
           <div className="p-4">
-            <TransactionForm original={transaction} onSaved={handleClose} onCancel={() => setIsEditing(false)} />
+            <TransactionForm original={transaction} onSaved={() => handleClose()} onCancel={() => setIsEditing(false)} />
           </div>
         ) : (
         <div className="p-4 space-y-4">

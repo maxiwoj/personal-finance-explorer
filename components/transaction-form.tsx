@@ -3,17 +3,19 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
 import { parseMoney } from '@/lib/sheets'
+import { getCategoryColor } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import type { Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
   // Edits this transaction when set, otherwise adds a new one
   original?: Transaction
-  onSaved: () => void
+  onSaved: (input: TransactionInput) => void
   onCancel?: () => void
 }
 
@@ -30,7 +32,8 @@ function toDateTimeLocal(date: Date) {
     `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-function mostCommon(values: string[]) {
+// Most frequent first, so the usual picks are the first chips
+function byFrequency(values: string[]) {
   const counts = new Map<string, number>()
   values.forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1))
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => value)
@@ -42,15 +45,14 @@ function validate(fields: { what: string; category: string; amount: string; curr
   const currency = fields.currency.trim()
   const amountText = fields.amount.trim()
 
+  const amount = AMOUNT_PATTERN.test(amountText) ? parseMoney(amountText) : null
+  if (amount === null) return 'Enter a valid amount, e.g. 12.50.'
   if (!what) return 'Enter what the transaction was for.'
-  if (!category) return 'Enter a category.'
-  if (!currency) return 'Enter a currency.'
+  if (!category) return 'Pick a category.'
+  if (!currency) return 'Pick a currency.'
   if ([what, category, currency].some(value => value.length > MAX_TEXT_LENGTH)) {
     return `Text fields must be at most ${MAX_TEXT_LENGTH} characters.`
   }
-
-  const amount = AMOUNT_PATTERN.test(amountText) ? parseMoney(amountText) : null
-  if (amount === null) return 'Enter a valid amount, e.g. 12.50.'
 
   const timestamp = isEdit ? new Date(fields.timestamp) : new Date()
   if (isNaN(timestamp.getTime())) return 'Enter a valid date and time.'
@@ -58,22 +60,94 @@ function validate(fields: { what: string; category: string; amount: string; curr
   return { timestamp, what, category, amount, currency }
 }
 
+interface ChipPickerProps {
+  id: string
+  label: string
+  options: string[]
+  value: string
+  onChange: (value: string) => void
+  colorFor?: (value: string) => string
+}
+
+// One tap selects an option; "New" reveals a text field for values not used before
+function ChipPicker({ id, label, options, value, onChange, colorFor }: ChipPickerProps) {
+  const [isCustom, setIsCustom] = useState(false)
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={isCustom ? id : undefined}>{label}</Label>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
+        {options.map(option => {
+          const selected = !isCustom && option === value
+          const color = colorFor?.(option)
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => {
+                setIsCustom(false)
+                onChange(option)
+              }}
+              className={cn(
+                'min-h-10 rounded-full border px-4 text-sm font-medium transition-colors',
+                selected ? 'border-transparent text-white' : 'bg-background hover:bg-muted',
+                selected && !color && 'bg-primary text-primary-foreground'
+              )}
+              style={selected && color ? { backgroundColor: color } : undefined}
+            >
+              {option}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => {
+            setIsCustom(true)
+            onChange('')
+          }}
+          className={cn(
+            'min-h-10 rounded-full border border-dashed px-4 text-sm font-medium transition-colors flex items-center gap-1',
+            isCustom ? 'bg-muted' : 'text-muted-foreground hover:bg-muted'
+          )}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New
+        </button>
+      </div>
+      {isCustom && (
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder={`New ${label.toLowerCase()}`} autoComplete="off" autoFocus className="h-11" />
+      )}
+    </div>
+  )
+}
+
 export function TransactionForm({ original, onSaved, onCancel }: TransactionFormProps) {
   const { data: transactions } = useRecentTransactions()
   const saveTransaction = useSaveTransaction()
 
-  const categories = useMemo(() => mostCommon((transactions ?? []).map(t => t.category)), [transactions])
-  const currencies = useMemo(() => mostCommon((transactions ?? []).map(t => t.currency)), [transactions])
+  const categories = useMemo(() => {
+    const values = byFrequency((transactions ?? []).map(t => t.category))
+    return original && !values.includes(original.category) ? [original.category, ...values] : values
+  }, [original, transactions])
 
+  const currencies = useMemo(() => {
+    const values = byFrequency((transactions ?? []).map(t => t.currency))
+    if (original && !values.includes(original.currency)) return [original.currency, ...values]
+    return values.length > 0 ? values : ['PLN']
+  }, [original, transactions])
+
+  const [amount, setAmount] = useState(original ? String(original.amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
   const [category, setCategory] = useState(original?.category ?? '')
-  const [amount, setAmount] = useState(original ? String(original.amountOriginal) : '')
-  const [currency, setCurrency] = useState(original?.currency ?? '')
+  // null until picked: a new transaction then uses the most common currency
+  const [currency, setCurrency] = useState<string | null>(original?.currency ?? null)
   const [timestamp, setTimestamp] = useState(original ? toDateTimeLocal(original.timestamp) : '')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const effectiveCurrency = currency || currencies[0] || 'PLN'
+  const effectiveCurrency = currency ?? currencies[0]
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -88,7 +162,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setIsSaving(true)
     try {
       await saveTransaction(result, original)
-      onSaved()
+      onSaved(result)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save the transaction.')
     } finally {
@@ -97,38 +171,34 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
+    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
+      <div className="space-y-2">
+        <Label htmlFor="transaction-amount">Amount</Label>
+        <Input
+          id="transaction-amount"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+          autoComplete="off"
+          autoFocus={!original}
+          className="h-14 text-2xl font-semibold md:text-2xl"
+        />
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="transaction-what">What</Label>
-        <Input id="transaction-what" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Groceries" autoFocus={!original} />
+        <Input id="transaction-what" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Groceries" autoComplete="off" className="h-11 text-base" />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="transaction-category">Category</Label>
-        <Input id="transaction-category" list="transaction-categories" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="food" autoComplete="off" />
-        <datalist id="transaction-categories">
-          {categories.map(value => <option key={value} value={value} />)}
-        </datalist>
-      </div>
+      <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="transaction-amount">Amount</Label>
-          <Input id="transaction-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" autoComplete="off" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="transaction-currency">Currency</Label>
-          <Input id="transaction-currency" list="transaction-currencies" value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder={effectiveCurrency} autoComplete="off" />
-          <datalist id="transaction-currencies">
-            {currencies.map(value => <option key={value} value={value} />)}
-          </datalist>
-        </div>
-      </div>
+      <ChipPicker id="transaction-currency" label="Currency" options={currencies} value={effectiveCurrency} onChange={setCurrency} />
 
       {original && (
         <div className="space-y-2">
           <Label htmlFor="transaction-timestamp">Date and time</Label>
-          <Input id="transaction-timestamp" type="datetime-local" step="1" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} />
+          <Input id="transaction-timestamp" type="datetime-local" step="1" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} className="h-11" />
         </div>
       )}
 
@@ -139,13 +209,13 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
         </Alert>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex gap-2">
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
+          <Button type="button" variant="outline" size="lg" onClick={onCancel} disabled={isSaving} className="flex-1">
             Cancel
           </Button>
         )}
-        <Button type="submit" disabled={isSaving}>
+        <Button type="submit" size="lg" disabled={isSaving} className="flex-1">
           {isSaving ? 'Saving...' : original ? 'Save changes' : 'Add transaction'}
         </Button>
       </div>
