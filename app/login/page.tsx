@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
 import { OpenSourceNotice } from '@/components/open-source-notice'
+import { AuthorLinks } from '@/components/author-links'
 import { AlertCircle, FlaskConical, Wallet } from 'lucide-react'
 
 export default function LoginPage() {
@@ -81,7 +82,10 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <OpenSourceNotice />
+          <div className="space-y-1">
+            <OpenSourceNotice />
+            <AuthorLinks />
+          </div>
         </CardContent>
       </Card>
     </div>

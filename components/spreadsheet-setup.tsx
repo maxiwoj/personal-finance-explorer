@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { OpenSourceNotice } from '@/components/open-source-notice'
+import { AuthorLinks } from '@/components/author-links'
 import { AlertCircle, Copy, FileSpreadsheet, LogOut } from 'lucide-react'
 
 export function SpreadsheetSetup() {
@@ -63,7 +64,10 @@ export function SpreadsheetSetup() {
             </Button>
           </div>
 
-          <OpenSourceNotice />
+          <div className="space-y-1">
+            <OpenSourceNotice />
+            <AuthorLinks />
+          </div>
         </CardContent>
       </Card>
     </div>
