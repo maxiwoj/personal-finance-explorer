@@ -1,21 +1,24 @@
-import { AUTHOR_LINKS, REPO_URL } from '@/lib/config'
-
-const linkClassName = 'hover:text-primary transition-colors underline underline-offset-4'
+import { AUTHOR } from '@/lib/config'
+import { Button } from '@/components/ui/button'
+import { OpenSourceNotice } from '@/components/open-source-notice'
 
 export function Footer() {
   return (
     <footer className="border-t">
-      <div className="container mx-auto max-w-7xl px-4 md:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={linkClassName}>
-          Source on GitHub
-        </a>
-        <span aria-hidden="true">·</span>
-        <span>More from the author:</span>
-        {AUTHOR_LINKS.map(({ label, href }) => (
-          <a key={href} href={href} target="_blank" rel="noopener noreferrer" className={linkClassName}>
-            {label}
-          </a>
-        ))}
+      <div className="container mx-auto max-w-7xl px-4 md:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <OpenSourceNotice />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Built by {AUTHOR.name}</span>
+          <div className="flex items-center">
+            {AUTHOR.links.map(({ label, href, icon: Icon }) => (
+              <Button key={href} asChild variant="ghost" size="icon" className="h-8 w-8">
+                <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}>
+                  <Icon className="h-4 w-4" />
+                </a>
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
     </footer>
   )

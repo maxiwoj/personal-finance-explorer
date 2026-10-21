@@ -4,11 +4,11 @@ import Link from 'next/link'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
-import { REPO_URL } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
+import { OpenSourceNotice } from '@/components/open-source-notice'
 import { AlertCircle, FlaskConical, Wallet } from 'lucide-react'
 
 export default function LoginPage() {
@@ -79,10 +79,9 @@ export default function LoginPage() {
             <Link href="/privacy" className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors underline underline-offset-4">
               Privacy Policy
             </Link>
-            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors underline underline-offset-4">
-              GitHub
-            </a>
           </div>
+
+          <OpenSourceNotice />
         </CardContent>
       </Card>
     </div>

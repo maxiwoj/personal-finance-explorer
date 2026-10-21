@@ -2,10 +2,11 @@
 
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
-import { REPO_URL, SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
+import { SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { OpenSourceNotice } from '@/components/open-source-notice'
 import { AlertCircle, Copy, FileSpreadsheet, LogOut } from 'lucide-react'
 
 export function SpreadsheetSetup() {
@@ -62,12 +63,7 @@ export function SpreadsheetSetup() {
             </Button>
           </div>
 
-          <p className="text-xs text-center text-muted-foreground">
-            Open source on{' '}
-            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors underline underline-offset-4">
-              GitHub
-            </a>
-          </p>
+          <OpenSourceNotice />
         </CardContent>
       </Card>
     </div>

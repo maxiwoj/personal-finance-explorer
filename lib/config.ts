@@ -1,3 +1,5 @@
+import { Camera, Github, Linkedin } from 'lucide-react'
+
 export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
 // Optional default spreadsheet; users can pick their own via Google Picker
 export const SPREADSHEET_ID = process.env.NEXT_PUBLIC_SPREADSHEET_ID || ''
@@ -21,11 +23,13 @@ export const TEMPLATE_COPY_URL = `https://docs.google.com/spreadsheets/d/${TEMPL
 export const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 
 export const REPO_URL = 'https://github.com/maxiwoj/personal-finance-explorer-rs'
-// TODO: set the LinkedIn profile URL; links with an empty href are not rendered
-export const LINKEDIN_URL = ''
-// Author's other work, shown in the app footer; add new entries here
-export const AUTHOR_LINKS = [
-  { label: 'GitHub', href: 'https://github.com/maxiwoj' },
-  { label: 'LinkedIn', href: LINKEDIN_URL },
-  { label: 'Photography', href: 'https://mwojczuk.photo' },
-].filter(({ href }) => href)
+
+// Author's profiles, shown in the app footer; add new entries here
+export const AUTHOR = {
+  name: 'Maksymilian Wojczuk',
+  links: [
+    { label: 'GitHub', href: 'https://github.com/maxiwoj', icon: Github },
+    { label: 'LinkedIn', href: 'https://www.linkedin.com/in/maksymilian-wojczuk-53a669121', icon: Linkedin },
+    { label: 'Photography', href: 'https://mwojczuk.photo', icon: Camera },
+  ],
+}
