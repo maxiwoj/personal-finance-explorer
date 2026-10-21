@@ -20,7 +20,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 -   **Styling**: [Tailwind CSS](https://tailwindcss.com) & [Radix UI](https://www.radix-ui.com)
 -   **Charts**: [ECharts](https://echarts.apache.org) & [Recharts](https://recharts.org)
 -   **State Management**: [TanStack Query](https://tanstack.com/query)
--   **API**: Google Sheets API via `googleapis`
+-   **API**: Google Sheets API (REST, from the browser) and Google Picker; `googleapis` for OAuth on the server
 
 ## Key Components
 
@@ -37,6 +37,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 -   **Google Sheets**: All your financial data stays in your own Google Spreadsheet.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
+-   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.
 
 ## Performance Optimizations

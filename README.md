@@ -20,7 +20,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 
 ## Features
 
-- **Google Sheets Integration**: Directly syncs with your Google Spreadsheet. The app does not store any of your data on its servers.
+- **Google Sheets Integration**: Directly syncs with your Google Spreadsheet, selected from your Drive after sign-in. The app can only access the file you select and does not store any of your data on its servers.
 - **Interactive Dashboard**: Get a high-level overview of your spending, income, and net flow with dynamic charts.
 - **Detailed Transaction Explorer**: Search, filter, and drill down into every transaction.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
@@ -44,7 +44,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 
 - Node.js 18.x or later
 - A Google Cloud Project with the Google Sheets API and Google Picker API enabled
-- A Google Spreadsheet with your financial data
+- A Google Spreadsheet with your financial data in the [template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) format
 
 ### Development
 

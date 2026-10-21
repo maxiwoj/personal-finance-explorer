@@ -30,7 +30,7 @@ export default function PrivacyPolicy() {
             We collect the following types of information:
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
-            <li><strong>Google Account Information:</strong> To authenticate you and access your Google Sheets.</li>
+            <li><strong>Google Account Information:</strong> To authenticate you and access the Google Sheet you select.</li>
             <li><strong>Financial Data:</strong> Data from your spreadsheets is read but not stored on our servers.</li>
             <li><strong>Usage Data:</strong> We may collect anonymized usage statistics to improve our service.</li>
           </ul>
@@ -50,7 +50,9 @@ export default function PrivacyPolicy() {
 
           <h2 className="text-xl font-semibold">5. Third-Party Services</h2>
           <p>
-            We use Google OAuth for authentication and Google Sheets API to read your financial data.
+            We use Google OAuth for authentication, Google Picker to let you select a spreadsheet, and Google Sheets API
+            to read your financial data. The app requests per-file Google Drive access, so it can only access files
+            you select or create with it. Your selected spreadsheet is remembered in your browser&apos;s local storage.
             Please refer to Google's Privacy Policy for more information on how they handle your data.
           </p>
 

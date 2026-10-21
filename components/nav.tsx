@@ -45,7 +45,7 @@ function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { sc
 export function Nav() {
   const pathname = usePathname()
   const { signOut, isExpiring, refreshSession, mode } = useAuth()
-  const { spreadsheet, isPicking, pickerError, chooseSpreadsheet } = useSpreadsheet()
+  const { spreadsheet, changeSpreadsheet } = useSpreadsheet()
   const reloadFinanceData = useReloadFinanceData()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
@@ -63,7 +63,7 @@ export function Nav() {
   }
 
   const reloadLabel = isReloading ? reloadConfig.loadingLabel : reloadConfig.idleLabel
-  const spreadsheetLabel = spreadsheet?.name ? `Spreadsheet: ${spreadsheet.name}` : 'Change spreadsheet'
+  const spreadsheetLabel = spreadsheet?.name ? `Change spreadsheet (current: ${spreadsheet.name})` : 'Change spreadsheet'
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -75,12 +75,6 @@ export function Nav() {
             <RefreshCw className="h-3 w-3" />
             Refresh
           </button>
-        </div>
-      )}
-      {pickerError && (
-        <div className="bg-destructive text-white px-4 py-1 text-xs font-medium flex items-center justify-center gap-2">
-          <AlertTriangle className="h-3 w-3" />
-          <span>{pickerError}</span>
         </div>
       )}
       <div className="container px-4 md:px-6 lg:px-8 mx-auto max-w-7xl flex h-14 items-center gap-2">
@@ -122,9 +116,8 @@ export function Nav() {
         </Button>
 
         {mode === 'google' && (
-          <Button variant="ghost" size="sm" onClick={() => void chooseSpreadsheet()} disabled={isPicking} className="hidden md:flex items-center gap-2" title={spreadsheetLabel}>
+          <Button variant="ghost" size="sm" onClick={() => void changeSpreadsheet()} className="hidden md:flex" title={spreadsheetLabel} aria-label={spreadsheetLabel}>
             <FileSpreadsheet className="h-4 w-4" />
-            <span className="hidden lg:inline">Change spreadsheet</span>
           </Button>
         )}
 
@@ -173,9 +166,8 @@ export function Nav() {
               size="sm"
               onClick={() => {
                 setMobileMenuOpen(false)
-                void chooseSpreadsheet()
+                void changeSpreadsheet()
               }}
-              disabled={isPicking}
               className="w-full justify-start gap-3 px-3"
             >
               <FileSpreadsheet className="h-4 w-4" />

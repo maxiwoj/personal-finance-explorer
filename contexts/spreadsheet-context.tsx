@@ -22,6 +22,8 @@ interface SpreadsheetContextType {
   isPicking: boolean
   pickerError: string | null
   chooseSpreadsheet: () => Promise<void>
+  // Forgets the current choice (and skips the default) so the user lands on the setup screen
+  changeSpreadsheet: () => Promise<void>
   reportAccessError: (message: string) => void
 }
 
@@ -43,6 +45,14 @@ function readStoredSelection(userId: string | null): PickedSpreadsheet | null {
   }
 }
 
+function removeStoredSelection(userId: string | null) {
+  try {
+    localStorage.removeItem(storageKey(userId))
+  } catch (error) {
+    console.error('Failed to remove selected spreadsheet:', error)
+  }
+}
+
 function writeStoredSelection(userId: string | null, selection: PickedSpreadsheet) {
   try {
     localStorage.setItem(storageKey(userId), JSON.stringify(selection))
@@ -59,20 +69,22 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
   const [accessError, setAccessError] = useState<string | null>(null)
   const [isPicking, setIsPicking] = useState(false)
   const [pickerError, setPickerError] = useState<string | null>(null)
+  const [isChanging, setIsChanging] = useState(false)
 
   useEffect(() => {
     setAccessError(null)
+    setIsChanging(false)
   }, [mode, userId])
 
   // Read synchronously so the first fetch never targets the default sheet by mistake
   const spreadsheet = useMemo<SelectedSpreadsheet | null>(() => {
-    if (mode !== 'google') return null
+    if (mode !== 'google' || isChanging) return null
     const stored = readStoredSelection(userId)
     if (stored) return { id: stored.id, name: stored.name || null, isDefault: false }
     if (SPREADSHEET_ID) return { id: SPREADSHEET_ID, name: null, isDefault: true }
     return null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, userId, selectionVersion])
+  }, [mode, userId, selectionVersion, isChanging])
 
   const chooseSpreadsheet = useCallback(async () => {
     if (!accessToken) return
@@ -87,6 +99,7 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
       // Cached transactions belong to the previous spreadsheet
       await clearCache()
       setSelectionVersion((v) => v + 1)
+      setIsChanging(false)
       setAccessError(null)
       await queryClient.resetQueries()
     } catch (error) {
@@ -97,13 +110,22 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, queryClient, userId])
 
+  const changeSpreadsheet = useCallback(async () => {
+    removeStoredSelection(userId)
+    await clearCache()
+    setIsChanging(true)
+    setAccessError(null)
+    setPickerError(null)
+    queryClient.removeQueries()
+  }, [queryClient, userId])
+
   const reportAccessError = useCallback((message: string) => {
     setAccessError(message)
   }, [])
 
   return (
     <SpreadsheetContext.Provider
-      value={{ spreadsheet, accessError, isPicking, pickerError, chooseSpreadsheet, reportAccessError }}
+      value={{ spreadsheet, accessError, isPicking, pickerError, chooseSpreadsheet, changeSpreadsheet, reportAccessError }}
     >
       {children}
     </SpreadsheetContext.Provider>

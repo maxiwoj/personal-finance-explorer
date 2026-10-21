@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
-import { TEMPLATE_COPY_URL } from '@/lib/config'
+import { SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -11,7 +11,8 @@ import { AlertCircle, Copy, FileSpreadsheet, LogOut } from 'lucide-react'
 export function SpreadsheetSetup() {
   const { signOut } = useAuth()
   const { spreadsheet, accessError, pickerError, isPicking, chooseSpreadsheet } = useSpreadsheet()
-  const error = pickerError ?? accessError
+  // The deployment default is only reachable by its owner; for everyone else its failure just means "nothing chosen yet"
+  const error = pickerError ?? (spreadsheet?.isDefault ? null : accessError)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
@@ -19,7 +20,7 @@ export function SpreadsheetSetup() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Choose your spreadsheet</CardTitle>
           <CardDescription>
-            Select the Google Sheet with your transactions. The app can only access the file you select.
+            The app reads your transactions from a Google Sheet. It can only access the file you select.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -33,10 +34,19 @@ export function SpreadsheetSetup() {
             </Alert>
           )}
 
+          <p className="text-sm text-muted-foreground">
+            Already have a spreadsheet in the template format? Select it from your Google Drive.
+          </p>
+
           <Button onClick={() => void chooseSpreadsheet()} disabled={isPicking} className="w-full flex items-center justify-center gap-3" size="lg">
             <FileSpreadsheet className="h-5 w-5" />
             {isPicking ? 'Opening Google Drive...' : 'Select from Google Drive'}
           </Button>
+
+          <p className="text-sm text-muted-foreground pt-4 border-t">
+            New here? Copy the template to your Google Drive. It contains sample transactions: delete them from
+            the <strong>{SHEETS.FULL}</strong> tab before adding your own. Then come back and select the copy above.
+          </p>
 
           <Button asChild variant="secondary" className="w-full flex items-center justify-center gap-3" size="lg">
             <a href={TEMPLATE_COPY_URL} target="_blank" rel="noopener noreferrer">
@@ -44,10 +54,6 @@ export function SpreadsheetSetup() {
               Make a copy of the template
             </a>
           </Button>
-
-          <p className="text-xs text-center text-muted-foreground">
-            New here? Copy the template to your Drive, then select the copy above.
-          </p>
 
           <div className="flex justify-center pt-4 border-t">
             <Button variant="ghost" size="sm" onClick={signOut} className="flex items-center gap-2">
