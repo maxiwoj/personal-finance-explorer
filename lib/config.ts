@@ -6,7 +6,6 @@ export const SPREADSHEET_ID = process.env.NEXT_PUBLIC_SPREADSHEET_ID || ''
 // Google Picker requires an API key and the Cloud project number (app ID)
 export const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || ''
 export const GOOGLE_APP_ID = process.env.NEXT_PUBLIC_GOOGLE_APP_ID || ''
-export const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3000'
 
 // Configurable sheet names
 export const SHEETS = {

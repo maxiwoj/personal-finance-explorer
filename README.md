@@ -4,7 +4,7 @@
   <img src="./public/logo.png" alt="Personal Finance Explorer Logo" width="120" height="120" />
 </p>
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs&env=NEXT_PUBLIC_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,NEXT_PUBLIC_GOOGLE_API_KEY,NEXT_PUBLIC_GOOGLE_APP_ID,NEXT_PUBLIC_REDIRECT_URI&envDescription=Required%20Google%20OAuth%20credentials%2C%20Picker%20API%20key%2C%20project%20number%2C%20and%20Redirect%20URI.%20See%20the%20Deployment%20Guide%20for%20setup%20instructions.&envLink=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs&env=NEXT_PUBLIC_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,NEXT_PUBLIC_GOOGLE_API_KEY,NEXT_PUBLIC_GOOGLE_APP_ID&envDescription=Required%20Google%20OAuth%20client%20ID%20and%20secret%2C%20Picker%20API%20key%2C%20and%20Cloud%20project%20number.%20See%20the%20Deployment%20Guide%20for%20setup%20instructions.&envLink=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs%2Fblob%2Fmain%2Fdocs%2Fdeployment.md%233-environment-variables)
 
 A powerful, privacy-focused personal finance dashboard that turns your Google Sheets into a rich, interactive explorer. Built with Next.js, Google OAuth 2.0, and high-performance charting.
 
@@ -77,7 +77,6 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
    NEXT_PUBLIC_GOOGLE_APP_ID=your_cloud_project_number
    # Optional: spreadsheet tried before asking the user to pick one
    NEXT_PUBLIC_SPREADSHEET_ID=your_spreadsheet_id
-   NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000
    GOOGLE_CLIENT_SECRET=your_client_secret
    ```
    *For detailed setup instructions, see the [Deployment Guide](./docs/deployment.md).*
@@ -97,19 +96,18 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 ## 🚀 Quick Deployment
 
 ### One-Click Vercel Deployment
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs&env=NEXT_PUBLIC_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,NEXT_PUBLIC_GOOGLE_API_KEY,NEXT_PUBLIC_GOOGLE_APP_ID,NEXT_PUBLIC_REDIRECT_URI&envDescription=Required%20Google%20OAuth%20credentials%2C%20Picker%20API%20key%2C%20project%20number%2C%20and%20Redirect%20URI.%20See%20the%20Deployment%20Guide%20for%20setup%20instructions.&envLink=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs%2Fblob%2Fmain%2Fdocs%2Fdeployment.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs&env=NEXT_PUBLIC_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,NEXT_PUBLIC_GOOGLE_API_KEY,NEXT_PUBLIC_GOOGLE_APP_ID&envDescription=Required%20Google%20OAuth%20client%20ID%20and%20secret%2C%20Picker%20API%20key%2C%20and%20Cloud%20project%20number.%20See%20the%20Deployment%20Guide%20for%20setup%20instructions.&envLink=https%3A%2F%2Fgithub.com%2Fmaxiwoj%2Fpersonal-finance-explorer-rs%2Fblob%2Fmain%2Fdocs%2Fdeployment.md%233-environment-variables)
 
 Deploy your own instance of this app with just one click! Simply click the "Deploy with Vercel" button above, and follow these steps:
 
 1. Sign in to your Vercel account (or create one if you don't have it)
 2. Connect your GitHub account when prompted
-3. Fill in the required environment variables:
+3. Fill in the required environment variables (see [Environment Variables](./docs/deployment.md#3-environment-variables) for where each comes from):
    - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID
+   - `GOOGLE_CLIENT_SECRET`: Your Google OAuth Client Secret
    - `NEXT_PUBLIC_GOOGLE_API_KEY`: API key for the Google Picker
    - `NEXT_PUBLIC_GOOGLE_APP_ID`: Your Google Cloud project number
-   - `NEXT_PUBLIC_SPREADSHEET_ID` (optional): Default spreadsheet ID
-   - `GOOGLE_CLIENT_SECRET`: Your Google OAuth Client Secret
-   - `NEXT_PUBLIC_REDIRECT_URI`: Your Vercel deployment URL (will be auto-filled)
+   - `NEXT_PUBLIC_SPREADSHEET_ID` (optional, add later in project settings): Default spreadsheet ID
 4. Click "Deploy" and your app will be live in minutes!
 
 For detailed setup instructions, see the [Setup & Deployment Guide](./docs/deployment.md).
