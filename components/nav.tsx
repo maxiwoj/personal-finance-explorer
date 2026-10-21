@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -24,6 +24,7 @@ const navItems = [
   { href: '/categories', label: 'Categories', icon: PieChart },
   { href: '/yearly-summary', label: 'Yearly Summary', icon: BarChart3 },
   { href: '/transactions', label: 'Transactions', icon: List },
+  { href: '/add', label: 'Add', icon: Plus },
 ]
 
 function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { scope: FinanceDataScope; idleLabel: string; loadingLabel: string } {

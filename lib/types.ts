@@ -10,6 +10,15 @@ export type Transaction = {
   transactionId: string
 }
 
+// Fields a user enters when adding or editing a transaction
+export type TransactionInput = {
+  timestamp: Date
+  what: string
+  category: string
+  amount: number
+  currency: string
+}
+
 export type CategoryTotal = {
   category: string
   total: number

@@ -69,7 +69,7 @@ Use exact origins: scheme + host (+ port), no trailing slash, no path. You will 
 
 Each user brings their own spreadsheet and selects it in the app after signing in. The app can only access files selected in the picker.
 
-The easiest start is to [make a copy of the template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) (also linked from the app's setup screen). It contains sample transactions: delete them from the `expenses` tab before adding your own. The copy does not include the template's Google Form; add transactions directly in the sheet or link your own form.
+The easiest start is to [make a copy of the template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) (also linked from the app's setup screen). It contains sample transactions: delete them from the `expenses` tab before adding your own. Add transactions from the app's **Add** page (or directly in the sheet).
 
 To build a spreadsheet by hand instead:
 
@@ -84,7 +84,7 @@ To build a spreadsheet by hand instead:
     - AmountPLN
     - MonthYear
     - TransactionID
-4. **Recommendation**: Connect a Google Form with fields "What, Category, Amount, Currency" and infer the rest automatically.
+4. The app writes only Timestamp, What, Category, Amount and Currency. Compute AmountPLN, MonthYear and TransactionID in the sheet (the template uses header-row `ARRAYFORMULA`s), and keep timestamps in `DD/MM/YYYY HH:MM:SS` format with a spreadsheet locale that reads dates as day/month.
 
 ![Spreadsheet Example](./images/spreadsheet-example.png)
 

@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import type { Transaction } from './types'
+import type { Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
   constructor(message: string, public status: number) {
@@ -50,7 +50,7 @@ function parseTimestamp(timestampStr: string): Date {
   return new Date()
 }
 
-function parseMoney(value: string | undefined): number | null {
+export function parseMoney(value: string | undefined): number | null {
   if (!value) return null
   
   // Clean the string:
@@ -194,4 +194,144 @@ export function describeSpreadsheetAccessError(error: unknown): string | null {
   }
 
   return null
+}
+
+// Only the input columns (Timestamp..Currency) are written; the template's ARRAYFORMULAs
+// derive AmountPLN, MonthYear and TransactionID.
+const INPUT_RANGE_END = 'E'
+
+function pad(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+// DD/MM/YYYY HH:MM:SS, the template's format and the one parseTimestamp tries first
+export function formatSheetTimestamp(date: Date): string {
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// Values are written as USER_ENTERED so dates and numbers keep the sheet's types;
+// a leading apostrophe keeps text like "=x" or "+48..." from turning into a formula
+function asText(value: string) {
+  return /^[=+\-@']/.test(value) ? `'${value}` : value
+}
+
+function toInputRow(input: TransactionInput): (string | number)[] {
+  return [
+    formatSheetTimestamp(input.timestamp),
+    asText(input.what),
+    asText(input.category),
+    input.amount,
+    asText(input.currency),
+  ]
+}
+
+async function sheetsRequest(accessToken: string, url: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    let message = 'Google Sheets request failed'
+
+    try {
+      const error = await response.json()
+      message = error.error?.message || message
+    } catch {
+      // keep fallback message
+    }
+
+    if (response.status === 403) {
+      message = 'You need edit access to this spreadsheet to save transactions.'
+    }
+
+    throw new SheetsApiError(message, response.status)
+  }
+
+  return response.json()
+}
+
+export async function appendTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  input: TransactionInput
+): Promise<void> {
+  const range = `${SHEETS.FULL}!A:${INPUT_RANGE_END}`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+
+  await sheetsRequest(accessToken, url, {
+    method: 'POST',
+    body: JSON.stringify({ values: [toInputRow(input)] }),
+  })
+}
+
+function matchesTransaction(row: string[], original: Transaction) {
+  const parsed = parseRow(row)
+  if (!parsed) return false
+
+  // Rows without an ID get a random one on read, so only compare IDs the sheet actually holds
+  const sheetId = row[7]?.trim()
+  if (sheetId && sheetId !== original.transactionId) return false
+
+  return parsed.timestamp.getTime() === original.timestamp.getTime() &&
+    parsed.what === original.what &&
+    parsed.category === original.category &&
+    parsed.amountOriginal === original.amountOriginal &&
+    parsed.currency === original.currency
+}
+
+// Transactions may come from either tab, so the row is located in the full tab by content
+// right before writing. Anything but exactly one match aborts instead of guessing.
+export async function updateTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  original: Transaction,
+  input: TransactionInput
+): Promise<void> {
+  const readRange = `${SHEETS.FULL}!A:H`
+  const sheet = await sheetsRequest(
+    accessToken,
+    `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(readRange)}`
+  )
+  const rows: string[][] = sheet.values || []
+
+  const matches: number[] = []
+  rows.forEach((row, index) => {
+    const isHeader = index === 0 && row[0]?.toLowerCase().includes('timestamp')
+    if (!isHeader && matchesTransaction(row, original)) matches.push(index)
+  })
+
+  if (matches.length === 0) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+
+  if (matches.length > 1) {
+    throw new Error('Several identical rows match this transaction. Edit it directly in the spreadsheet.')
+  }
+
+  const sheetRow = matches[0] + 1
+  const next = toInputRow(input)
+  const changed = [
+    input.timestamp.getTime() !== original.timestamp.getTime(),
+    input.what !== original.what,
+    input.category.toLowerCase() !== original.category,
+    input.amount !== original.amountOriginal,
+    input.currency !== original.currency,
+  ]
+
+  // Only changed cells are written, so untouched cells keep their exact value and formatting
+  const data = next.flatMap((value, index) => changed[index]
+    ? [{ range: `${SHEETS.FULL}!${'ABCDE'[index]}${sheetRow}`, values: [[value]] }]
+    : [])
+
+  if (data.length === 0) return
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
 }

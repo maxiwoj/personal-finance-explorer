@@ -4,10 +4,10 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
-import { getOrCreateDemoTransactions } from '@/lib/demo-data'
-import { describeSpreadsheetAccessError, fetchFullTransactions, fetchRecentTransactions, SheetsApiError } from '@/lib/sheets'
+import { addDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
+import { appendTransaction, describeSpreadsheetAccessError, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
-import type { Transaction } from '@/lib/types'
+import type { Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
 
@@ -18,6 +18,8 @@ export interface FinanceDataProvider {
   getRecentTransactions: () => Promise<Transaction[]>
   getFullTransactions: () => Promise<Transaction[]>
   reloadData: (scope?: FinanceDataScope) => Promise<void>
+  addTransaction: (input: TransactionInput) => Promise<void>
+  updateTransaction: (original: Transaction, input: TransactionInput) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -40,10 +42,13 @@ function buildGoogleProvider(
   refreshSession: () => Promise<boolean>,
   reportAccessError: (message: string) => void
 ): FinanceDataProvider {
-  const fetchWithRefresh = async (
+  // Writes skip the post-pick retry and access-error reporting: a 403 on write usually means
+  // view-only access, which must not bounce the user back to spreadsheet setup
+  const fetchWithRefresh = async <T,>(
     currentToken: string | null,
-    fetcher: (token: string, spreadsheetId: string) => Promise<Transaction[]>
-  ) => {
+    fetcher: (token: string, spreadsheetId: string) => Promise<T>,
+    { isWrite = false } = {}
+  ): Promise<T> => {
     if (!currentToken) {
       throw new Error('Not authenticated')
     }
@@ -58,7 +63,7 @@ function buildGoogleProvider(
           return await fetcher(token, spreadsheetId)
         } catch (error) {
           const withinGracePeriod = pickedAt !== null && Date.now() - pickedAt < PICK_GRACE_PERIOD_MS
-          if (!isMissingAccess(error) || !withinGracePeriod) throw error
+          if (isWrite || !isMissingAccess(error) || !withinGracePeriod) throw error
           await sleep(delay)
         }
       }
@@ -68,7 +73,7 @@ function buildGoogleProvider(
     try {
       return await fetchWithPickRetry(currentToken)
     } catch (error) {
-      const accessError = describeSpreadsheetAccessError(error)
+      const accessError = isWrite ? null : describeSpreadsheetAccessError(error)
       if (accessError) {
         reportAccessError(accessError)
         throw new Error(accessError)
@@ -132,6 +137,12 @@ function buildGoogleProvider(
 
       await clearCache()
     },
+    async addTransaction(input) {
+      await fetchWithRefresh(accessToken, (token, id) => appendTransaction(token, id, input), { isWrite: true })
+    },
+    async updateTransaction(original, input) {
+      await fetchWithRefresh(accessToken, (token, id) => updateTransaction(token, id, original, input), { isWrite: true })
+    },
   }
 }
 
@@ -151,6 +162,8 @@ function buildDemoProvider(): FinanceDataProvider {
     async reloadData() {
       await getOrCreateDemoTransactions(true)
     },
+    addTransaction: addDemoTransaction,
+    updateTransaction: updateDemoTransaction,
   }
 }
 

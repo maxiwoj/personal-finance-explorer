@@ -1,4 +1,4 @@
-import type { Transaction } from './types'
+import type { Transaction, TransactionInput } from './types'
 
 const DEMO_DATA_URL = '/demo/demo-transactions.csv'
 const DEMO_STORAGE_KEY = 'pfe_demo_transactions_v2'
@@ -203,4 +203,42 @@ export async function getOrCreateDemoTransactions(forceReload = false): Promise<
   }
 
   return generated
+}
+
+function saveDemoTransactions(transactions: Transaction[]) {
+  const sorted = [...transactions].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+  window.localStorage.setItem(DEMO_STORAGE_KEY, serializeTransactions(sorted))
+}
+
+function fromInput(input: TransactionInput, transactionId: string): Transaction {
+  const multiplier = DEMO_CURRENCY_MULTIPLIERS[input.currency as DemoCurrency] ?? 1
+
+  return {
+    timestamp: input.timestamp,
+    what: input.what,
+    category: input.category.toLowerCase(),
+    amountOriginal: input.amount,
+    currency: input.currency,
+    amountPLN: Math.round(input.amount * multiplier * 100) / 100,
+    monthYear: formatMonthYear(input.timestamp),
+    monthName: '',
+    transactionId,
+  }
+}
+
+export async function addDemoTransaction(input: TransactionInput) {
+  const transactions = await getOrCreateDemoTransactions()
+  const transactionId = `demo-added-${Math.random().toString(36).slice(2, 10)}`
+  saveDemoTransactions([...transactions, fromInput(input, transactionId)])
+}
+
+export async function updateDemoTransaction(original: Transaction, input: TransactionInput) {
+  const transactions = await getOrCreateDemoTransactions()
+  if (!transactions.some(t => t.transactionId === original.transactionId)) {
+    throw new Error('Transaction not found. Reload the demo data and try again.')
+  }
+
+  saveDemoTransactions(transactions.map(t => t.transactionId === original.transactionId
+    ? fromInput(input, t.transactionId)
+    : t))
 }

@@ -15,7 +15,7 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 ## Why Personal Finance Explorer?
 
 - **Your data stays in your Google Sheet**: There is no database. Transactions are read straight from the Google Sheets API into your browser; the app's server never receives them.
-- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It only reads it, never writes.
+- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add or edit a transaction, and only the input columns (Timestamp to Currency) of the `expenses` tab.
 - **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out.
 - **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
 - **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).
@@ -33,6 +33,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Google Sheets Integration**: Directly syncs with your Google Spreadsheet, selected from your Drive after sign-in. The app can only access the file you select and does not store any of your data on its servers.
 - **Interactive Dashboard**: Get a high-level overview of your spending, income, and net flow with dynamic charts.
 - **Detailed Transaction Explorer**: Search, filter, and drill down into every transaction.
+- **Add and Edit Transactions**: Add a transaction from the app (or a home-screen shortcut to `/add`) and edit existing ones from the transaction details.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.
 
