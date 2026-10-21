@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/contexts/auth-context'
 import { FinanceDataProvider } from '@/contexts/data-provider-context'
+import { SpreadsheetProvider } from '@/contexts/spreadsheet-context'
 import { FilterProvider } from '@/contexts/filter-context'
 import { useState, type ReactNode } from 'react'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -24,9 +25,11 @@ export function Providers({ children }: { children: ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <FinanceDataProvider>
-            <FilterProvider>{children}</FilterProvider>
-          </FinanceDataProvider>
+          <SpreadsheetProvider>
+            <FinanceDataProvider>
+              <FilterProvider>{children}</FilterProvider>
+            </FinanceDataProvider>
+          </SpreadsheetProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>

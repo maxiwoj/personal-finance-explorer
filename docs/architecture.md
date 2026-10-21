@@ -6,11 +6,12 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 1.  **Authentication**: The user logs in via Google OAuth 2.0. The frontend receives an authorization code and sends it to the backend (`/api/auth/login`).
 2.  **Token Management**: The backend exchanges the code for access and refresh tokens. The refresh token is stored in a secure, HttpOnly cookie.
-3.  **Data Fetching**: When the app needs data, it calls the Google Sheets API using the user's access token.
+3.  **Spreadsheet Selection**: The user picks a spreadsheet with Google Picker (`lib/google-picker.ts`). With the `drive.file` scope, picking is what grants the app access to that file. The selection is stored in `localStorage` per Google user (`contexts/spreadsheet-context.tsx`), falling back to `NEXT_PUBLIC_SPREADSHEET_ID`.
+4.  **Data Fetching**: When the app needs data, it calls the Google Sheets API for the selected spreadsheet using the user's access token.
     - If the access token is expired, the backend uses the refresh token to get a new one (`/api/auth/refresh`).
-4.  **Parsing & Normalization**: Raw rows from Google Sheets are parsed into a consistent `Transaction` type in `lib/sheets.ts`. This includes handling various date formats and currency/amount parsing.
-5.  **State Management**: Financial data is managed using **TanStack Query** for caching and background updates. The `DataProvider` context provides this data to the entire component tree.
-6.  **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
+5.  **Parsing & Normalization**: Raw rows from Google Sheets are parsed into a consistent `Transaction` type in `lib/sheets.ts`. This includes handling various date formats and currency/amount parsing.
+6.  **State Management**: Financial data is managed using **TanStack Query** for caching and background updates. The `DataProvider` context provides this data to the entire component tree.
+7.  **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
 
 ## Tech Stack
 
@@ -19,7 +20,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 -   **Styling**: [Tailwind CSS](https://tailwindcss.com) & [Radix UI](https://www.radix-ui.com)
 -   **Charts**: [ECharts](https://echarts.apache.org) & [Recharts](https://recharts.org)
 -   **State Management**: [TanStack Query](https://tanstack.com/query)
--   **API**: Google Sheets API via `googleapis`
+-   **API**: Google Sheets API (REST, from the browser) and Google Picker; `googleapis` for OAuth on the server
 
 ## Key Components
 
@@ -36,6 +37,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 -   **Google Sheets**: All your financial data stays in your own Google Spreadsheet.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
+-   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.
 
 ## Performance Optimizations

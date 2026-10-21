@@ -3,7 +3,9 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
+import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { Nav } from '@/components/nav'
+import { SpreadsheetSetup } from '@/components/spreadsheet-setup'
 import { Spinner } from '@/components/ui/spinner'
 
 export default function AppLayout({
@@ -11,7 +13,8 @@ export default function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, mode } = useAuth()
+  const { spreadsheet, accessError } = useSpreadsheet()
   const router = useRouter()
 
   useEffect(() => {
@@ -26,6 +29,10 @@ export default function AppLayout({
         <Spinner className="h-8 w-8" />
       </div>
     )
+  }
+
+  if (mode === 'google' && (!spreadsheet || accessError)) {
+    return <SpreadsheetSetup />
   }
 
   return (

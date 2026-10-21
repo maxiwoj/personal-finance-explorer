@@ -4,8 +4,17 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/auth-context'
+import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -43,7 +52,8 @@ function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { sc
 
 export function Nav() {
   const pathname = usePathname()
-  const { signOut, isExpiring, refreshSession, mode } = useAuth()
+  const { signOut, isExpiring, refreshSession, mode, email } = useAuth()
+  const { spreadsheet, changeSpreadsheet } = useSpreadsheet()
   const reloadFinanceData = useReloadFinanceData()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
@@ -61,6 +71,35 @@ export function Nav() {
   }
 
   const reloadLabel = isReloading ? reloadConfig.loadingLabel : reloadConfig.idleLabel
+
+  const renderAccountMenu = (className: string) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className={className} title="Account" aria-label="Account">
+          <CircleUser className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel className="font-normal">
+          <div className="text-sm font-medium truncate">{mode === 'demo' ? 'Demo mode' : email ?? 'Signed in with Google'}</div>
+          {mode === 'google' && spreadsheet?.name && (
+            <div className="text-xs text-muted-foreground truncate">Spreadsheet: {spreadsheet.name}</div>
+          )}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {mode === 'google' && (
+          <DropdownMenuItem onSelect={() => void changeSpreadsheet()}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Change spreadsheet
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={signOut}>
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -112,14 +151,13 @@ export function Nav() {
           <span className="hidden lg:inline">{reloadLabel}</span>
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={signOut} className="hidden md:flex items-center gap-2" title="Sign Out">
-          <LogOut className="h-4 w-4" />
-          <span className="hidden lg:inline">Sign Out</span>
-        </Button>
+        {renderAccountMenu('hidden md:flex')}
 
         <ThemeToggle className="hidden md:inline-flex" />
 
         <ThemeToggle className="ml-auto md:hidden" />
+
+        {renderAccountMenu('md:hidden')}
 
         <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
           {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -150,18 +188,6 @@ export function Nav() {
           <Button variant="outline" size="sm" onClick={() => void handleReload()} disabled={isReloading} className="w-full justify-start gap-3 px-3">
             <RefreshCw className={cn('h-4 w-4', isReloading && 'animate-spin')} />
             {reloadLabel}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              signOut()
-              setMobileMenuOpen(false)
-            }}
-            className="w-full justify-start gap-3 px-3"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign Out
           </Button>
         </nav>
       )}

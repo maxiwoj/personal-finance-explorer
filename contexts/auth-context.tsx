@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { GOOGLE_CLIENT_ID } from '@/lib/config'
+import { DRIVE_FILE_SCOPE, GOOGLE_CLIENT_ID } from '@/lib/config'
 import { clearCache } from '@/lib/cache'
 import { clearStoredDemoTransactions } from '@/lib/demo-data'
 
@@ -9,9 +9,10 @@ const STORAGE_KEY = 'pfe_access_token'
 const EXPIRY_KEY = 'pfe_token_expiry'
 const HINT_KEY = 'pfe_email_hint'
 const MODE_KEY = 'pfe_auth_mode'
+const USER_ID_KEY = 'pfe_user_id'
 
 const REQUIRED_SCOPES = [
-  'https://www.googleapis.com/auth/spreadsheets.readonly',
+  DRIVE_FILE_SCOPE,
   'https://www.googleapis.com/auth/userinfo.email',
   'openid',
 ].join(' ')
@@ -25,6 +26,8 @@ interface GoogleCodeClient {
 interface AuthContextType {
   mode: AuthMode
   accessToken: string | null
+  userId: string | null
+  email: string | null
   isAuthenticated: boolean
   isLoading: boolean
   isExpiring: boolean
@@ -37,6 +40,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
+
+class MissingScopeError extends Error {
+  constructor() {
+    super('Google Drive file access is required. Please sign in again and allow access to the files you select.')
+    this.name = 'MissingScopeError'
+  }
+}
 
 declare global {
   interface Window {
@@ -63,11 +73,14 @@ function clearGoogleSession() {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(EXPIRY_KEY)
   localStorage.removeItem(HINT_KEY)
+  localStorage.removeItem(USER_ID_KEY)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<AuthMode>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
   const [expiryTime, setExpiryTime] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -77,22 +90,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearAuthState = useCallback(() => {
     clearGoogleSession()
     setAccessToken(null)
+    setUserId(null)
+    setEmail(null)
     setExpiryTime(null)
     setMode(null)
     setIsExpiring(false)
     localStorage.removeItem(MODE_KEY)
   }, [])
 
-  const handleAuthResponse = useCallback(async (data: { access_token: string, expiry_date: number }) => {
-    setMode('google')
-    setAccessToken(data.access_token)
-    setExpiryTime(data.expiry_date)
-    setIsExpiring(false)
+  const handleAuthResponse = useCallback(async (data: { access_token: string, expiry_date: number, scope?: string }) => {
+    // Users can untick scopes on the consent screen; without drive.file the app can't read any sheet
+    if (data.scope && !data.scope.split(' ').includes(DRIVE_FILE_SCOPE)) {
+      throw new MissingScopeError()
+    }
 
-    localStorage.setItem(MODE_KEY, 'google')
-    localStorage.setItem(STORAGE_KEY, data.access_token)
-    localStorage.setItem(EXPIRY_KEY, data.expiry_date.toString())
-
+    // Resolve the user before exposing the token so per-user settings (selected spreadsheet) load correctly
+    let resolvedUserId = localStorage.getItem(USER_ID_KEY)
     try {
       const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${data.access_token}` },
@@ -101,12 +114,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (userInfoResponse.ok) {
         const userInfo = await userInfoResponse.json()
         if (userInfo.email) {
+          setEmail(userInfo.email)
           localStorage.setItem(HINT_KEY, userInfo.email)
+        }
+        if (userInfo.sub) {
+          resolvedUserId = userInfo.sub
+          localStorage.setItem(USER_ID_KEY, userInfo.sub)
         }
       }
     } catch (fetchError) {
       console.error('Failed to fetch user hint:', fetchError)
     }
+
+    setMode('google')
+    setAccessToken(data.access_token)
+    setUserId(resolvedUserId)
+    setExpiryTime(data.expiry_date)
+    setIsExpiring(false)
+
+    localStorage.setItem(MODE_KEY, 'google')
+    localStorage.setItem(STORAGE_KEY, data.access_token)
+    localStorage.setItem(EXPIRY_KEY, data.expiry_date.toString())
     setError(null)
   }, [])
 
@@ -126,6 +154,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await handleAuthResponse(data)
       return true
     } catch (e) {
+      if (e instanceof MissingScopeError) {
+        // Session predates the drive.file scope (or it was declined): force a fresh consent
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => undefined)
+        setError(e.message)
+      }
       console.error('Refresh error:', e)
       clearAuthState()
       return false
@@ -176,6 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (hasValidStoredToken) {
         setMode('google')
         setAccessToken(storedToken)
+        setUserId(localStorage.getItem(USER_ID_KEY))
+        setEmail(localStorage.getItem(HINT_KEY))
         setExpiryTime(parseInt(storedExpiry!, 10))
         setIsLoading(false)
         return
@@ -230,7 +265,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
               } catch (e) {
                 console.error('Login error:', e)
-                setError('Failed to connect to authentication server')
+                if (e instanceof MissingScopeError) {
+                  await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => undefined)
+                  setError(e.message)
+                } else {
+                  setError('Failed to connect to authentication server')
+                }
               }
               setIsLoading(false)
             }
@@ -272,6 +312,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearGoogleSession()
     void clearCache()
     setAccessToken(null)
+    setUserId(null)
+    setEmail(null)
     setExpiryTime(null)
     setIsExpiring(false)
     setError(null)
@@ -309,6 +351,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         mode,
         accessToken,
+        userId,
+        email,
         isAuthenticated: mode === 'demo' || !!accessToken,
         isLoading,
         isExpiring,
