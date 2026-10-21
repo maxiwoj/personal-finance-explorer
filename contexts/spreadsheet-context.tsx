@@ -14,6 +14,8 @@ export interface SelectedSpreadsheet {
   name: string | null
   // True when the deployment's NEXT_PUBLIC_SPREADSHEET_ID is used instead of a user pick
   isDefault: boolean
+  // When the user picked it in this session; access right after a pick can lag behind (see data provider)
+  pickedAt: number | null
 }
 
 interface SpreadsheetContextType {
@@ -70,6 +72,7 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
   const [isPicking, setIsPicking] = useState(false)
   const [pickerError, setPickerError] = useState<string | null>(null)
   const [isChanging, setIsChanging] = useState(false)
+  const [pickedAt, setPickedAt] = useState<number | null>(null)
 
   useEffect(() => {
     setAccessError(null)
@@ -80,11 +83,11 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
   const spreadsheet = useMemo<SelectedSpreadsheet | null>(() => {
     if (mode !== 'google' || isChanging) return null
     const stored = readStoredSelection(userId)
-    if (stored) return { id: stored.id, name: stored.name || null, isDefault: false }
-    if (SPREADSHEET_ID) return { id: SPREADSHEET_ID, name: null, isDefault: true }
+    if (stored) return { id: stored.id, name: stored.name || null, isDefault: false, pickedAt }
+    if (SPREADSHEET_ID) return { id: SPREADSHEET_ID, name: null, isDefault: true, pickedAt: null }
     return null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, userId, selectionVersion, isChanging])
+  }, [mode, userId, selectionVersion, isChanging, pickedAt])
 
   const chooseSpreadsheet = useCallback(async () => {
     if (!accessToken) return
@@ -99,6 +102,7 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
       // Cached transactions belong to the previous spreadsheet
       await clearCache()
       setSelectionVersion((v) => v + 1)
+      setPickedAt(Date.now())
       setIsChanging(false)
       setAccessError(null)
       await queryClient.resetQueries()

@@ -22,9 +22,21 @@ export interface FinanceDataProvider {
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
 
+// Google grants drive.file access to a picked file asynchronously; for a freshly copied file the
+// first reads can return 403/404 for a few seconds. Retry those right after a pick.
+const PICK_GRACE_PERIOD_MS = 30_000
+const PICK_RETRY_DELAYS_MS = [1000, 2000, 3000, 4000, 5000]
+
+function isMissingAccess(error: unknown) {
+  return error instanceof SheetsApiError && (error.status === 403 || error.status === 404)
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 function buildGoogleProvider(
   accessToken: string | null,
   spreadsheetId: string | null,
+  pickedAt: number | null,
   refreshSession: () => Promise<boolean>,
   reportAccessError: (message: string) => void
 ): FinanceDataProvider {
@@ -40,8 +52,21 @@ function buildGoogleProvider(
       throw new Error('No spreadsheet selected')
     }
 
+    const fetchWithPickRetry = async (token: string) => {
+      for (const delay of PICK_RETRY_DELAYS_MS) {
+        try {
+          return await fetcher(token, spreadsheetId)
+        } catch (error) {
+          const withinGracePeriod = pickedAt !== null && Date.now() - pickedAt < PICK_GRACE_PERIOD_MS
+          if (!isMissingAccess(error) || !withinGracePeriod) throw error
+          await sleep(delay)
+        }
+      }
+      return fetcher(token, spreadsheetId)
+    }
+
     try {
-      return await fetcher(currentToken, spreadsheetId)
+      return await fetchWithPickRetry(currentToken)
     } catch (error) {
       const accessError = describeSpreadsheetAccessError(error)
       if (accessError) {
@@ -133,14 +158,15 @@ export function FinanceDataProvider({ children }: { children: ReactNode }) {
   const { mode, accessToken, refreshSession } = useAuth()
   const { spreadsheet, reportAccessError } = useSpreadsheet()
   const spreadsheetId = spreadsheet?.id ?? null
+  const pickedAt = spreadsheet?.pickedAt ?? null
 
   const provider = useMemo(() => {
     if (mode === 'demo') {
       return buildDemoProvider()
     }
 
-    return buildGoogleProvider(accessToken, spreadsheetId, refreshSession, reportAccessError)
-  }, [accessToken, mode, refreshSession, reportAccessError, spreadsheetId])
+    return buildGoogleProvider(accessToken, spreadsheetId, pickedAt, refreshSession, reportAccessError)
+  }, [accessToken, mode, pickedAt, refreshSession, reportAccessError, spreadsheetId])
 
   return <DataProviderContext.Provider value={provider}>{children}</DataProviderContext.Provider>
 }

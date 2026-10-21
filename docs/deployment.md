@@ -68,7 +68,7 @@ To build a spreadsheet by hand instead:
 
 ![Spreadsheet Example](./images/spreadsheet-example.png)
 
-5. After signing in, select the spreadsheet with **Select from Google Drive**. The choice is remembered per Google account in your browser. To switch later, use the spreadsheet icon in the navigation bar.
+5. After signing in, select the spreadsheet with **Select from Google Drive**. The choice is remembered per Google account in your browser. To switch later, use **Change spreadsheet** in the account menu (top right).
 6. Optional: set `NEXT_PUBLIC_SPREADSHEET_ID` (from `https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit`) as the default. With the `drive.file` scope it only works for an account that has selected that sheet in the picker at least once; everyone else sees the setup screen.
 
 ---

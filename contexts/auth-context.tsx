@@ -27,6 +27,7 @@ interface AuthContextType {
   mode: AuthMode
   accessToken: string | null
   userId: string | null
+  email: string | null
   isAuthenticated: boolean
   isLoading: boolean
   isExpiring: boolean
@@ -79,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<AuthMode>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
   const [expiryTime, setExpiryTime] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -89,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearGoogleSession()
     setAccessToken(null)
     setUserId(null)
+    setEmail(null)
     setExpiryTime(null)
     setMode(null)
     setIsExpiring(false)
@@ -111,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (userInfoResponse.ok) {
         const userInfo = await userInfoResponse.json()
         if (userInfo.email) {
+          setEmail(userInfo.email)
           localStorage.setItem(HINT_KEY, userInfo.email)
         }
         if (userInfo.sub) {
@@ -206,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMode('google')
         setAccessToken(storedToken)
         setUserId(localStorage.getItem(USER_ID_KEY))
+        setEmail(localStorage.getItem(HINT_KEY))
         setExpiryTime(parseInt(storedExpiry!, 10))
         setIsLoading(false)
         return
@@ -308,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void clearCache()
     setAccessToken(null)
     setUserId(null)
+    setEmail(null)
     setExpiryTime(null)
     setIsExpiring(false)
     setError(null)
@@ -346,6 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         mode,
         accessToken,
         userId,
+        email,
         isAuthenticated: mode === 'demo' || !!accessToken,
         isLoading,
         isExpiring,
