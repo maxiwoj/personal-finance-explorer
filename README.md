@@ -12,6 +12,16 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 
 ![Dashboard Overview](./docs/images/dashboard.png)
 
+## Why Personal Finance Explorer?
+
+- **Your data stays in your Google Sheet**: There is no database. Transactions are read straight from the Google Sheets API into your browser; the app's server never receives them.
+- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It only reads it, never writes.
+- **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out.
+- **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
+- **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).
+
+> Note: the app includes [Vercel Web Analytics](https://vercel.com/docs/analytics) for page-view stats. It does not receive your spreadsheet data.
+
 ## Try the Live Demo
 
 Want to see the app in action? Visit the [live demo](https://v0-personal-finance-dashboard-eta-seven.vercel.app/) to experience the full functionality with sample data.
