@@ -33,7 +33,8 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Google Sheets Integration**: Directly syncs with your Google Spreadsheet, selected from your Drive after sign-in. The app can only access the file you select and does not store any of your data on its servers.
 - **Interactive Dashboard**: Get a high-level overview of your spending, income, and net flow with dynamic charts.
 - **Detailed Transaction Explorer**: Search, filter, and drill down into every transaction.
-- **Add and Edit Transactions**: Add a transaction from the app (or a home-screen shortcut to `/add`) and edit existing ones from the transaction details.
+- **Add and Edit Transactions**: Add a transaction from the app and edit existing ones from the transaction details. Category order and colors can be fixed with an optional `categories` tab.
+- **Quick Add on iPhone**: Open `/add` in Safari, tap **Share → Add to Home Screen**, and turn off **Open as Web App** if shown, so the shortcut shares Safari's sign-in.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.
 

@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import type { Transaction, TransactionInput } from './types'
+import type { CategoryDefinition, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
   constructor(message: string, public status: number) {
@@ -245,7 +245,7 @@ async function sheetsRequest(accessToken: string, url: string, init: RequestInit
       // keep fallback message
     }
 
-    if (response.status === 403) {
+    if (response.status === 403 && init.method) {
       message = 'You need edit access to this spreadsheet to save transactions.'
     }
 
@@ -333,5 +333,63 @@ export async function updateTransaction(
   await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+// null when the spreadsheet has no categories tab, so callers fall back to derived categories
+export async function fetchCategories(accessToken: string, spreadsheetId: string): Promise<CategoryDefinition[] | null> {
+  const range = `${SHEETS.CATEGORIES}!A:B`
+  let data: { values?: string[][] }
+
+  try {
+    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
+  } catch (error) {
+    if (error instanceof SheetsApiError && error.status === 400 && /unable to parse range/i.test(error.message)) {
+      return null
+    }
+    throw error
+  }
+
+  const rows = data.values || []
+  const seen = new Set<string>()
+
+  return rows
+    .filter((row, index) => !(index === 0 && /^categor(y|ies)$/i.test(row[0]?.trim() ?? '')))
+    .map(([name, color]) => ({
+      name: name?.trim().toLowerCase() ?? '',
+      color: color && HEX_COLOR.test(color.trim()) ? color.trim() : null,
+    }))
+    .filter(({ name }) => {
+      if (!name || seen.has(name)) return false
+      seen.add(name)
+      return true
+    })
+}
+
+export async function appendCategory(accessToken: string, spreadsheetId: string, name: string): Promise<void> {
+  const range = `${SHEETS.CATEGORIES}!A:A`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+
+  await sheetsRequest(accessToken, url, {
+    method: 'POST',
+    body: JSON.stringify({ values: [[asText(name)]] }),
+  })
+}
+
+// Creates the categories tab, seeded with the given categories and their current colors
+export async function createCategoriesSheet(accessToken: string, spreadsheetId: string, categories: CategoryDefinition[]): Promise<void> {
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SHEETS.CATEGORIES } } }] }),
+  })
+
+  const range = `${SHEETS.CATEGORIES}!A1`
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      values: [['Category', 'Color'], ...categories.map(({ name, color }) => [asText(name), color ?? ''])],
+    }),
   })
 }

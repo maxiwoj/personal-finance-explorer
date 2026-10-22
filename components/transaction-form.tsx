@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useState, type FormEvent } from 'react'
-import { useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useCategories, useCategoryListActions, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { parseMoney } from '@/lib/sheets'
-import { getCategoryColor } from '@/lib/colors'
+import { getCategoryColor, withAlpha } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import type { Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -21,6 +22,7 @@ interface TransactionFormProps {
 
 const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
 const MAX_TEXT_LENGTH = 200
+const MAX_QUICK_PICKS = 8
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -37,6 +39,25 @@ function byFrequency(values: string[]) {
   const counts = new Map<string, number>()
   values.forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1))
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => value)
+}
+
+type QuickPick = { what: string; category: string }
+
+// Frequent descriptions, each with the category it is most often filed under
+function getQuickPicks(transactions: Transaction[]): (QuickPick & { count: number })[] {
+  const byWhat = new Map<string, { what: string; count: number; categories: string[] }>()
+
+  transactions.forEach(t => {
+    const key = t.what.toLowerCase()
+    const entry = byWhat.get(key) ?? { what: t.what, count: 0, categories: [] }
+    entry.count += 1
+    entry.categories.push(t.category)
+    byWhat.set(key, entry)
+  })
+
+  return [...byWhat.values()]
+    .map(({ what, count, categories }) => ({ what, count, category: byFrequency(categories)[0] }))
+    .sort((a, b) => b.count - a.count)
 }
 
 function validate(fields: { what: string; category: string; amount: string; currency: string; timestamp: string }, isEdit: boolean): TransactionInput | string {
@@ -67,10 +88,11 @@ interface ChipPickerProps {
   value: string
   onChange: (value: string) => void
   colorFor?: (value: string) => string
+  allowCustom?: boolean
 }
 
 // One tap selects an option; "New" reveals a text field for values not used before
-function ChipPicker({ id, label, options, value, onChange, colorFor }: ChipPickerProps) {
+function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
 
   return (
@@ -95,12 +117,14 @@ function ChipPicker({ id, label, options, value, onChange, colorFor }: ChipPicke
                 selected ? 'border-transparent text-white' : 'bg-background hover:bg-muted',
                 selected && !color && 'bg-primary text-primary-foreground'
               )}
-              style={selected && color ? { backgroundColor: color } : undefined}
+              // Unselected category chips are tinted with their color so each is recognisable at a glance
+              style={color ? (selected ? { backgroundColor: color } : { borderColor: color, backgroundColor: withAlpha(color, 0.12) }) : undefined}
             >
               {option}
             </button>
           )
         })}
+        {allowCustom && (
         <button
           type="button"
           onClick={() => {
@@ -115,6 +139,7 @@ function ChipPicker({ id, label, options, value, onChange, colorFor }: ChipPicke
           <Plus className="h-3.5 w-3.5" />
           New
         </button>
+        )}
       </div>
       {isCustom && (
         <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder={`New ${label.toLowerCase()}`} autoComplete="off" autoFocus className="h-11" />
@@ -124,19 +149,28 @@ function ChipPicker({ id, label, options, value, onChange, colorFor }: ChipPicke
 }
 
 export function TransactionForm({ original, onSaved, onCancel }: TransactionFormProps) {
+  const provider = useFinanceDataProvider()
   const { data: transactions } = useRecentTransactions()
+  const { data: categoryList } = useCategories()
+  const { createCategoryList, addCategory } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
 
+  // The categories tab fixes the order; without it, alphabetical keeps chips in place between visits
   const categories = useMemo(() => {
-    const values = byFrequency((transactions ?? []).map(t => t.category))
-    return original && !values.includes(original.category) ? [original.category, ...values] : values
-  }, [original, transactions])
+    const values = categoryList?.length
+      ? categoryList.map(c => c.name)
+      : [...new Set((transactions ?? []).map(t => t.category))].sort()
+    return original && !values.includes(original.category) ? [...values, original.category] : values
+  }, [categoryList, original, transactions])
 
+  // Only currencies already in the sheet: its formulas may not convert an unknown one to PLN
   const currencies = useMemo(() => {
     const values = byFrequency((transactions ?? []).map(t => t.currency))
     if (original && !values.includes(original.currency)) return [original.currency, ...values]
     return values.length > 0 ? values : ['PLN']
   }, [original, transactions])
+
+  const quickPicks = useMemo(() => getQuickPicks(transactions ?? []), [transactions])
 
   const [amount, setAmount] = useState(original ? String(original.amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
@@ -146,8 +180,28 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [timestamp, setTimestamp] = useState(original ? toDateTimeLocal(original.timestamp) : '')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isCreatingList, setIsCreatingList] = useState(false)
 
   const effectiveCurrency = currency ?? currencies[0]
+  const normalizedCategory = category.trim().toLowerCase()
+  const typed = what.trim().toLowerCase()
+  const visibleQuickPicks = quickPicks
+    .filter(pick => !normalizedCategory || pick.category === normalizedCategory)
+    .filter(pick => !typed || (pick.what.toLowerCase().includes(typed) && pick.what.toLowerCase() !== typed))
+    .slice(0, MAX_QUICK_PICKS)
+
+  const handleCreateCategoryList = async () => {
+    setIsCreatingList(true)
+    setError(null)
+    try {
+      const ordered = byFrequency((transactions ?? []).map(t => t.category))
+      await createCategoryList(ordered.map(name => ({ name, color: getCategoryColor(name) })))
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Failed to create the category list.')
+    } finally {
+      setIsCreatingList(false)
+    }
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -162,6 +216,10 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setIsSaving(true)
     try {
       await saveTransaction(result, original)
+      // Keep the categories tab complete; the transaction is already saved, so a failure here is not fatal
+      if (categoryList && !categoryList.some(c => c.name === result.category.toLowerCase())) {
+        await addCategory(result.category.toLowerCase()).catch(() => undefined)
+      }
       onSaved(result)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save the transaction.')
@@ -177,6 +235,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
         <Input
           id="transaction-amount"
           inputMode="decimal"
+          enterKeyHint="next"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0.00"
@@ -187,13 +246,41 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="transaction-what">What</Label>
-        <Input id="transaction-what" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Groceries" autoComplete="off" className="h-11 text-base" />
+        <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} />
+        {!original && categoryList === null && provider.mode === 'google' && (
+          <p className="text-xs text-muted-foreground">
+            Categories are sorted alphabetically.{' '}
+            <button type="button" className="underline underline-offset-2" onClick={() => void handleCreateCategoryList()} disabled={isCreatingList}>
+              {isCreatingList ? 'Creating...' : 'Create a category list'}
+            </button>{' '}
+            in your spreadsheet to set their order and colors.
+          </p>
+        )}
       </div>
 
-      <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} />
+      <div className="space-y-2">
+        <Label htmlFor="transaction-what">What</Label>
+        <Input id="transaction-what" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Groceries" autoComplete="off" enterKeyHint="done" className="h-11 text-base" />
+        {visibleQuickPicks.length > 0 && (
+          <div className="flex flex-wrap gap-2" aria-label="Frequent descriptions">
+            {visibleQuickPicks.map(pick => (
+              <button
+                key={pick.what}
+                type="button"
+                onClick={() => {
+                  setWhat(pick.what)
+                  if (!normalizedCategory) setCategory(pick.category)
+                }}
+                className="min-h-9 rounded-full border bg-muted/50 px-3 text-sm transition-colors hover:bg-muted"
+              >
+                {pick.what}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <ChipPicker id="transaction-currency" label="Currency" options={currencies} value={effectiveCurrency} onChange={setCurrency} />
+      <ChipPicker id="transaction-currency" label="Currency" options={currencies} value={effectiveCurrency} onChange={setCurrency} allowCustom={false} />
 
       {original && (
         <div className="space-y-2">

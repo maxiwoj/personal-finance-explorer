@@ -10,6 +10,12 @@ export type Transaction = {
   transactionId: string
 }
 
+// A row of the optional categories tab; its order is the order shown when adding
+export type CategoryDefinition = {
+  name: string
+  color: string | null
+}
+
 // Fields a user enters when adding or editing a transaction
 export type TransactionInput = {
   timestamp: Date

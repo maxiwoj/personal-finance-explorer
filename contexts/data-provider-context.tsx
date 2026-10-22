@@ -5,9 +5,9 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { appendTransaction, describeSpreadsheetAccessError, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
+import { appendCategory, appendTransaction, createCategoriesSheet, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
-import type { Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
 
@@ -20,6 +20,10 @@ export interface FinanceDataProvider {
   reloadData: (scope?: FinanceDataScope) => Promise<void>
   addTransaction: (input: TransactionInput) => Promise<void>
   updateTransaction: (original: Transaction, input: TransactionInput) => Promise<void>
+  // null when the source has no category list (no categories tab, or demo mode)
+  getCategories: () => Promise<CategoryDefinition[] | null>
+  createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
+  addCategory: (name: string) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -143,6 +147,15 @@ function buildGoogleProvider(
     async updateTransaction(original, input) {
       await fetchWithRefresh(accessToken, (token, id) => updateTransaction(token, id, original, input), { isWrite: true })
     },
+    async getCategories() {
+      return fetchWithRefresh(accessToken, fetchCategories)
+    },
+    async createCategoryList(categories) {
+      await fetchWithRefresh(accessToken, (token, id) => createCategoriesSheet(token, id, categories), { isWrite: true })
+    },
+    async addCategory(name) {
+      await fetchWithRefresh(accessToken, (token, id) => appendCategory(token, id, name), { isWrite: true })
+    },
   }
 }
 
@@ -164,6 +177,13 @@ function buildDemoProvider(): FinanceDataProvider {
     },
     addTransaction: addDemoTransaction,
     updateTransaction: updateDemoTransaction,
+    async getCategories() {
+      return null
+    },
+    async createCategoryList() {
+      throw new Error('Category lists need a Google spreadsheet.')
+    },
+    async addCategory() {},
   }
 }
 

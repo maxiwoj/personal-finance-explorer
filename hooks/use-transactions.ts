@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
-import type { Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 
 export type FinanceDataScope = 'recent' | 'full' | 'all'
 
@@ -68,5 +68,33 @@ export function useSaveTransaction() {
       queryClient.invalidateQueries({ queryKey: ['recent-transactions', provider.mode] }),
       queryClient.invalidateQueries({ queryKey: ['full-transactions', provider.mode] }),
     ])
+  }
+}
+
+export function useCategories(enabled = true) {
+  const provider = useFinanceDataProvider()
+
+  return useQuery<CategoryDefinition[] | null>({
+    queryKey: ['categories', provider.mode, provider.sourceId],
+    queryFn: provider.getCategories,
+    staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
+    enabled,
+  })
+}
+
+export function useCategoryListActions() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['categories', provider.mode] })
+
+  return {
+    createCategoryList: async (categories: CategoryDefinition[]) => {
+      await provider.createCategoryList(categories)
+      await invalidate()
+    },
+    addCategory: async (name: string) => {
+      await provider.addCategory(name)
+      await invalidate()
+    },
   }
 }
