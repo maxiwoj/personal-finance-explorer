@@ -273,47 +273,42 @@ function matchesTransaction(row: string[], original: Transaction) {
   const parsed = parseRow(row)
   if (!parsed) return false
 
-  // Rows without an ID get a random one on read, so only compare IDs the sheet actually holds
-  const sheetId = row[7]?.trim()
-  if (sheetId && sheetId !== original.transactionId) return false
-
-  return parsed.timestamp.getTime() === original.timestamp.getTime() &&
+  return parsed.transactionId === original.transactionId &&
+    parsed.timestamp.getTime() === original.timestamp.getTime() &&
     parsed.what === original.what &&
     parsed.category === original.category &&
     parsed.amountOriginal === original.amountOriginal &&
     parsed.currency === original.currency
 }
 
-// Transactions may come from either tab, so the row is located in the full tab by content
-// right before writing. Anything but exactly one match aborts instead of guessing.
+// The row is located by TransactionID, downloading only that column instead of the whole tab.
+// It is then re-read to make sure it still holds what the user edited; otherwise the edit aborts.
 export async function updateTransaction(
   accessToken: string,
   spreadsheetId: string,
   original: Transaction,
   input: TransactionInput
 ): Promise<void> {
-  const readRange = `${SHEETS.FULL}!A:H`
-  const sheet = await sheetsRequest(
-    accessToken,
-    `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(readRange)}`
-  )
-  const rows: string[][] = sheet.values || []
-
-  const matches: number[] = []
-  rows.forEach((row, index) => {
-    const isHeader = index === 0 && row[0]?.toLowerCase().includes('timestamp')
-    if (!isHeader && matchesTransaction(row, original)) matches.push(index)
-  })
+  const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
+  const idColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!H:H`)}`)
+  const ids: string[][] = idColumn.values || []
+  const matches = ids.flatMap((row, index) => row[0]?.trim() === original.transactionId ? [index] : [])
 
   if (matches.length === 0) {
-    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+    throw new Error('This transaction was not found in the spreadsheet. Reload the data and try again.')
   }
 
   if (matches.length > 1) {
-    throw new Error('Several identical rows match this transaction. Edit it directly in the spreadsheet.')
+    throw new Error('Several rows share this transaction ID. Edit it directly in the spreadsheet.')
   }
 
   const sheetRow = matches[0] + 1
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:H${sheetRow}`)}`)
+
+  if (!matchesTransaction(current.values?.[0] ?? [], original)) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+
   const next = toInputRow(input)
   const changed = [
     input.timestamp.getTime() !== original.timestamp.getTime(),
