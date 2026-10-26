@@ -4,8 +4,8 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
-import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
+import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, renameDemoCategory, updateDemoTransaction } from '@/lib/demo-data'
+import { appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, renameCategory, SheetsApiError, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 
@@ -25,6 +25,8 @@ export interface FinanceDataProvider {
   getCategories: () => Promise<CategoryDefinition[] | null>
   createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
   addCategory: (name: string) => Promise<void>
+  // Renames the category in every transaction and in the category list, if there is one
+  renameCategory: (from: string, to: string) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -160,6 +162,9 @@ function buildGoogleProvider(
     async addCategory(name) {
       await fetchWithRefresh(accessToken, (token, id) => appendCategory(token, id, name), { isWrite: true })
     },
+    async renameCategory(from, to) {
+      await fetchWithRefresh(accessToken, (token, id) => renameCategory(token, id, from, to), { isWrite: true })
+    },
   }
 }
 
@@ -189,6 +194,7 @@ function buildDemoProvider(): FinanceDataProvider {
       throw new Error('Category lists need a Google spreadsheet.')
     },
     async addCategory() {},
+    renameCategory: renameDemoCategory,
   }
 }
 

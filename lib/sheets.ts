@@ -479,3 +479,39 @@ export async function createCategoriesSheet(accessToken: string, spreadsheetId: 
     }),
   })
 }
+
+// Renames a category in every transaction (column C of the full tab; the recent tab is derived
+// from it) and in the categories tab, so history is never split between the old and new name.
+// Renaming to a category that already exists merges the two: the old row leaves the list.
+// Cells are read with formulas, so a category set by a formula is left as it is.
+export async function renameCategory(accessToken: string, spreadsheetId: string, from: string, to: string): Promise<void> {
+  const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
+  const matches = (cell: unknown, name: string) => typeof cell === 'string' && cell.trim().toLowerCase() === name
+
+  const categoryColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!C:C`)}?valueRenderOption=FORMULA`)
+  const transactionCells: unknown[][] = categoryColumn.values || []
+  const data = transactionCells.flatMap((row, index) => matches(row[0], from)
+    ? [{ range: `${SHEETS.FULL}!C${index + 1}`, values: [[asText(to)]] }]
+    : [])
+
+  const categoryList = await fetchCategories(accessToken, spreadsheetId)
+  if (categoryList) {
+    const listColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.CATEGORIES}!A:A`)}?valueRenderOption=FORMULA`)
+    const listCells: unknown[][] = listColumn.values || []
+    const merging = categoryList.some(c => c.name === to)
+
+    listCells.forEach((row, index) => {
+      if (!matches(row[0], from)) return
+      data.push(merging
+        ? { range: `${SHEETS.CATEGORIES}!A${index + 1}:B${index + 1}`, values: [['', '']] }
+        : { range: `${SHEETS.CATEGORIES}!A${index + 1}`, values: [[asText(to)]] })
+    })
+  }
+
+  if (data.length === 0) return
+
+  await sheetsRequest(accessToken, `${valuesUrl}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
+}

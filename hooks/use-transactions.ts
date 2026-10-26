@@ -107,6 +107,7 @@ export function useCategories(enabled = true) {
 export function useCategoryListActions() {
   const provider = useFinanceDataProvider()
   const queryClient = useQueryClient()
+  const afterWrite = useAfterWrite()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['categories', provider.mode] })
 
   return {
@@ -117,6 +118,11 @@ export function useCategoryListActions() {
     addCategory: async (name: string) => {
       await provider.addCategory(name)
       await invalidate()
+    },
+    // Transactions change too, so their caches are dropped along with the category list
+    renameCategory: async (from: string, to: string) => {
+      await provider.renameCategory(from, to)
+      await Promise.all([invalidate(), afterWrite()])
     },
   }
 }

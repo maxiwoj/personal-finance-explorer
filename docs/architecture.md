@@ -38,7 +38,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 ## Storage & Privacy
 
--   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, or create the categories tab.
+-   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, rename a category, or create the categories tab.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.

@@ -158,16 +158,18 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const provider = useFinanceDataProvider()
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
-  const { createCategoryList, addCategory } = useCategoryListActions()
+  const { createCategoryList, addCategory, renameCategory } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
+  // The edited transaction as the sheet now holds it: renaming its category rewrites its row
+  const [baseline, setBaseline] = useState(original)
 
   // The categories tab fixes the order; without it, alphabetical keeps chips in place between visits
   const categories = useMemo(() => {
     const values = categoryList?.length
       ? categoryList.map(c => c.name)
       : [...new Set((transactions ?? []).map(t => t.category))].sort()
-    return original && !values.includes(original.category) ? [...values, original.category] : values
-  }, [categoryList, original, transactions])
+    return baseline && !values.includes(baseline.category) ? [...values, baseline.category] : values
+  }, [categoryList, baseline, transactions])
 
   // Only currencies already in the sheet: its formulas may not convert an unknown one to PLN
   const currencies = useMemo(() => {
@@ -188,6 +190,9 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCreatingList, setIsCreatingList] = useState(false)
+  // null while not renaming; otherwise the new name typed for the selected category
+  const [renameTo, setRenameTo] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
 
   const effectiveCurrency = currency ?? currencies[0]
   const normalizedCategory = category.trim().toLowerCase()
@@ -207,6 +212,34 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       setError(createError instanceof Error ? createError.message : 'Failed to create the category list.')
     } finally {
       setIsCreatingList(false)
+    }
+  }
+
+  // Only categories already in use can be renamed, not one typed with "New"
+  const canRename = categories.includes(normalizedCategory)
+  const renameTarget = renameTo?.trim().toLowerCase() ?? ''
+
+  const handleRenameCategory = async () => {
+    if (!renameTarget || renameTarget === normalizedCategory) {
+      setError('Enter a new name for the category.')
+      return
+    }
+    if (renameTarget.length > MAX_TEXT_LENGTH) {
+      setError(`Text fields must be at most ${MAX_TEXT_LENGTH} characters.`)
+      return
+    }
+
+    setIsRenaming(true)
+    setError(null)
+    try {
+      await renameCategory(normalizedCategory, renameTarget)
+      if (baseline?.category === normalizedCategory) setBaseline({ ...baseline, category: renameTarget })
+      setCategory(renameTarget)
+      setRenameTo(null)
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : 'Failed to rename the category.')
+    } finally {
+      setIsRenaming(false)
     }
   }
 
@@ -235,7 +268,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setError(null)
     setIsSaving(true)
     try {
-      await saveTransaction(result, original)
+      await saveTransaction(result, baseline)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not fatal
       if (categoryList && !categoryList.some(c => c.name === result.category.toLowerCase())) {
         await addCategory(result.category.toLowerCase()).catch(() => undefined)
@@ -274,6 +307,42 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
               {isCreatingList ? 'Creating...' : 'Create a category list'}
             </button>{' '}
             in your spreadsheet to set their order and colors.
+          </p>
+        )}
+        {renameTo !== null && canRename ? (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Input
+                value={renameTo}
+                onChange={(e) => setRenameTo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  void handleRenameCategory()
+                }}
+                aria-label={`New name for ${normalizedCategory}`}
+                autoComplete="off"
+                autoFocus
+                className="h-11"
+              />
+              <Button type="button" variant="outline" size="lg" onClick={() => void handleRenameCategory()} disabled={isRenaming}>
+                {isRenaming ? 'Renaming...' : 'Rename'}
+              </Button>
+              <Button type="button" variant="ghost" size="lg" onClick={() => setRenameTo(null)} disabled={isRenaming}>
+                Cancel
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {categories.includes(renameTarget) && renameTarget !== normalizedCategory
+                ? `"${renameTarget}" already exists: every "${normalizedCategory}" transaction moves into it.`
+                : `Renames "${normalizedCategory}" in every transaction${categoryList ? ' and in the category list' : ''}.`}
+            </p>
+          </div>
+        ) : canRename && (
+          <p className="text-xs text-muted-foreground">
+            <button type="button" className="underline underline-offset-2" onClick={() => setRenameTo(normalizedCategory)}>
+              Rename &quot;{normalizedCategory}&quot;
+            </button>
           </p>
         )}
       </div>
