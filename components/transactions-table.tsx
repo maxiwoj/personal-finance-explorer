@@ -5,6 +5,7 @@ import type { Transaction } from '@/lib/types'
 import { getCategoryColor } from '@/lib/colors'
 import { TransactionDetailModal } from './transaction-detail-modal'
 import { TransactionIndicators } from './transaction-indicators'
+import { useDefaultCurrency } from '@/hooks/use-transactions'
 import {
   Pagination,
   PaginationContent,
@@ -55,6 +56,7 @@ function buildPageNumbers(currentPage: number, totalPages: number): number[] {
 }
 
 export function TransactionsTable({ transactions, showCategory = true, limit, sortBy = 'date' }: TransactionsTableProps) {
+  const defaultCurrency = useDefaultCurrency()
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(limit ?? 20)
@@ -173,9 +175,9 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
                   )}
                   <td className="py-3 text-right whitespace-nowrap">
                     <div className="font-bold">
-                      {t.amountPLN.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                      {t.amountPLN.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
                     </div>
-                    {t.currency !== 'PLN' && (
+                    {t.currency !== defaultCurrency && (
                       <div className="text-[10px] text-muted-foreground font-medium uppercase">
                         {t.amountOriginal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {t.currency}
                       </div>
@@ -214,9 +216,9 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
                   </div>
                   <div className="shrink-0 text-right space-y-0.5">
                     <div className="text-sm font-bold whitespace-nowrap">
-                      {t.amountPLN.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                      {t.amountPLN.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
                     </div>
-                    {t.currency !== 'PLN' && (
+                    {t.currency !== defaultCurrency && (
                       <div className="text-[10px] text-muted-foreground font-medium uppercase whitespace-nowrap">
                         {t.amountOriginal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {t.currency}
                       </div>

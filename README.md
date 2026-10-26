@@ -15,7 +15,7 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 ## Why Personal Finance Explorer?
 
 - **Your data stays in your Google Sheet**: There is no database. Transactions are read from and written to the Google Sheets API directly in your browser; the app's server never receives them.
-- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add, edit, return or delete a transaction, and only the input columns (Timestamp to Currency, TransactionID, Notes and ReturnOf) of the `expenses` tab.
+- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add, edit, return or delete a transaction, and only the input columns (Timestamp to Currency, TransactionID, Notes and ReturnOf) of the `expenses` tab, or when you manage currencies in the `currencyDates` tab.
 - **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out.
 - **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
 - **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).
@@ -37,6 +37,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Edit Transactions**: Fix the amount, description, category, currency, date or notes from the transaction details. Only the changed cells are written, and the edit is refused if the row changed in the sheet in the meantime. Transactions can also be deleted; a purchase with returns only once its returns are removed.
 - **Returns**: Record a full or partial return from the transaction details, or remove one to revert it. The purchase keeps its original price and counts at its net amount in its own month. Needs stored transaction IDs; see [Stable transaction IDs](./docs/migrations/stable-transaction-ids.md) for updating an older spreadsheet.
 - **Fixed Category Order and Colors**: An optional `categories` tab sets the order of the category buttons and each category's color across the app. The Add page can create it from your existing categories.
+- **Currencies**: Amounts are shown in the default currency from `currencyDates!B1`. The **Currencies** page (account menu) adds a currency converted with Google Finance rates, or a fixed multiplier such as 0.5 for a joint account; it also changes a multiplier and removes unused currencies. See [Currencies](./docs/currencies.md).
 - **Quick Add on iPhone**: Open `/add` in Safari, tap **Share → Add to Home Screen**, and turn off **Open as Web App** if shown, so the shortcut shares Safari's sign-in.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.

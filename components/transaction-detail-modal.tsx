@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useDeleteTransaction } from '@/hooks/use-transactions'
+import { useDeleteTransaction, useDefaultCurrency } from '@/hooks/use-transactions'
 import { TransactionForm } from '@/components/transaction-form'
 import { ReturnForm } from '@/components/return-form'
 import { recordedAmount, returnableAmount } from '@/lib/returns'
@@ -58,6 +58,7 @@ function formatAmount(value: number) {
 }
 
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
+  const defaultCurrency = useDefaultCurrency()
   const [mode, setMode] = useState<'view' | 'edit' | 'return'>('view')
   // The transaction itself, or one of its returns, awaiting confirmation
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
@@ -117,12 +118,12 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
           <div className="text-center space-y-1 pb-2 border-b border-dashed">
             <p className="text-3xl font-black tracking-tight">
               {transaction.amountPLN.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}
-              <span className="text-sm font-bold text-muted-foreground ml-1 uppercase">PLN</span>
+              <span className="text-sm font-bold text-muted-foreground ml-1 uppercase">{defaultCurrency}</span>
             </p>
             <p className="text-base font-semibold text-foreground leading-tight">
               {transaction.what}
             </p>
-            {transaction.currency !== 'PLN' && (
+            {transaction.currency !== defaultCurrency && (
               <p className="text-xs font-medium text-muted-foreground bg-muted w-fit mx-auto px-2 py-0.5 rounded-full">
                 Original: {transaction.amountOriginal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {transaction.currency}
               </p>

@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/types'
+import { useDefaultCurrency } from '@/hooks/use-transactions'
 
 export type AmountField = 'amountPLN' | 'amountOriginal'
 
@@ -24,6 +25,7 @@ interface AmountFilterProps {
 }
 
 export function AmountFilter({ value, onChange, className }: AmountFilterProps) {
+  const defaultCurrency = useDefaultCurrency()
   const [open, setOpen] = useState(false)
   const [minInput, setMinInput] = useState(value.min !== null ? String(value.min) : '')
   const [maxInput, setMaxInput] = useState(value.max !== null ? String(value.max) : '')
@@ -50,7 +52,7 @@ export function AmountFilter({ value, onChange, className }: AmountFilterProps) 
         value.max !== null ? `≤ ${value.max}` : null,
       ]
         .filter(Boolean)
-        .join(', ') + (value.field === 'amountPLN' ? ' PLN' : ' orig.')
+        .join(', ') + (value.field === 'amountPLN' ? ` ${defaultCurrency}` : ' orig.')
     : 'Amount range'
 
   return (
@@ -83,7 +85,7 @@ export function AmountFilter({ value, onChange, className }: AmountFilterProps) 
             className="justify-start"
           >
             <ToggleGroupItem value="amountPLN" className="h-8 text-xs">
-              PLN (converted)
+              {defaultCurrency} (converted)
             </ToggleGroupItem>
             <ToggleGroupItem value="amountOriginal" className="h-8 text-xs">
               Original currency

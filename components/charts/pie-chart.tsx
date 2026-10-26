@@ -11,9 +11,10 @@ interface PieChartProps {
   onSliceClick?: (name: string) => void
   height?: number
   showLegend?: boolean
+  unit?: string
 }
 
-export function PieChart({ data, onSliceClick, height = 300, showLegend = true }: PieChartProps) {
+export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN' }: PieChartProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartRef = useRef<ReactECharts>(null)
@@ -65,7 +66,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true }
         textStyle: {
           color: chartTheme.tooltipText,
         },
-        formatter: '{b}: {c} PLN ({d}%)',
+        formatter: `{b}: {c} ${unit} ({d}%)`,
       },
       series: [
         {
@@ -111,7 +112,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true }
         },
       ],
     }),
-    [chartTheme, data, isDark]
+    [chartTheme, data, isDark, unit]
   )
 
   const handleClick = (params: { name?: string }) => {

@@ -86,7 +86,7 @@ To build a spreadsheet by hand instead:
     - TransactionID
 4. The app writes only Timestamp, What, Category, Amount and Currency. Compute AmountPLN, MonthYear and TransactionID in the sheet (the template uses header-row `ARRAYFORMULA`s); editing finds rows by TransactionID, so every row needs a unique one, and keep timestamps in `DD/MM/YYYY HH:MM:SS` format with a spreadsheet locale that reads dates as day/month.
    - Optional: a `categories` tab (column A: category, column B: hex color such as `#3b82f6`, header row optional) fixes the order of categories on the Add page and the color of each category everywhere. Without it, categories are listed alphabetically and colors can vary between visits. The Add page offers to create this tab from your existing categories; categories added in the app are appended to it.
-   - The Add page only offers currencies already in your data, since the sheet's formulas must know how to convert a currency to PLN.
+   - Optional: a `currencyDates` tab (see [Currencies](./currencies.md)) sets the default currency and lists the currencies the sheet converts; the Add page then offers exactly those, and they can be managed from the app. Without it, amounts are shown in PLN and the Add page only offers currencies already in your data, since the sheet's formulas must know how to convert a currency.
 
 ![Spreadsheet Example](./images/spreadsheet-example.png)
 

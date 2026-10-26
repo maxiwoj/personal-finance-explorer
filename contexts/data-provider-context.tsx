@@ -5,9 +5,9 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, fetchFullTransactions, fetchRecentTransactions, removeCurrency, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
-import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
 
@@ -25,6 +25,12 @@ export interface FinanceDataProvider {
   getCategories: () => Promise<CategoryDefinition[] | null>
   createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
   addCategory: (name: string) => Promise<void>
+  // null when the source has no currencyDates tab (or demo mode)
+  getCurrencies: () => Promise<CurrencyList | null>
+  // Without a multiplier, a standard currency converted with GOOGLEFINANCE
+  addCurrency: (input: { code: string; multiplier?: number }) => Promise<void>
+  updateCurrencyMultiplier: (currency: CurrencyDefinition, multiplier: number) => Promise<void>
+  removeCurrency: (currency: CurrencyDefinition) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -160,6 +166,18 @@ function buildGoogleProvider(
     async addCategory(name) {
       await fetchWithRefresh(accessToken, (token, id) => appendCategory(token, id, name), { isWrite: true })
     },
+    async getCurrencies() {
+      return fetchWithRefresh(accessToken, fetchCurrencies)
+    },
+    async addCurrency(input) {
+      await fetchWithRefresh(accessToken, (token, id) => addCurrency(token, id, input), { isWrite: true })
+    },
+    async updateCurrencyMultiplier(currency, multiplier) {
+      await fetchWithRefresh(accessToken, (token, id) => updateCurrencyMultiplier(token, id, currency, multiplier), { isWrite: true })
+    },
+    async removeCurrency(currency) {
+      await fetchWithRefresh(accessToken, (token, id) => removeCurrency(token, id, currency), { isWrite: true })
+    },
   }
 }
 
@@ -189,6 +207,18 @@ function buildDemoProvider(): FinanceDataProvider {
       throw new Error('Category lists need a Google spreadsheet.')
     },
     async addCategory() {},
+    async getCurrencies() {
+      return null
+    },
+    async addCurrency() {
+      throw new Error('Currency management needs a Google spreadsheet.')
+    },
+    async updateCurrencyMultiplier() {
+      throw new Error('Currency management needs a Google spreadsheet.')
+    },
+    async removeCurrency() {
+      throw new Error('Currency management needs a Google spreadsheet.')
+    },
   }
 }
 

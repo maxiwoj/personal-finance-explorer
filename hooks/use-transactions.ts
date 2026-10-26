@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { linkReturns } from '@/lib/returns'
-import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type FinanceDataScope = 'recent' | 'full' | 'all'
 
@@ -116,6 +116,46 @@ export function useCategoryListActions() {
     },
     addCategory: async (name: string) => {
       await provider.addCategory(name)
+      await invalidate()
+    },
+  }
+}
+
+export function useCurrencies(enabled = true) {
+  const provider = useFinanceDataProvider()
+
+  return useQuery<CurrencyList | null>({
+    queryKey: ['currencies', provider.mode, provider.sourceId],
+    queryFn: provider.getCurrencies,
+    staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
+    enabled,
+  })
+}
+
+// currencyDates!B1; PLN for sheets without that tab, which the template has always converted to
+export function useDefaultCurrency() {
+  const { data } = useCurrencies()
+  return data?.defaultCurrency ?? 'PLN'
+}
+
+export function useCurrencyActions() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  const afterWrite = useAfterWrite()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['currencies', provider.mode] })
+
+  return {
+    addCurrency: async (input: { code: string; multiplier?: number }) => {
+      await provider.addCurrency(input)
+      await invalidate()
+    },
+    // Converted amounts of past transactions change with the multiplier, so they are reloaded
+    updateCurrencyMultiplier: async (currency: CurrencyDefinition, multiplier: number) => {
+      await provider.updateCurrencyMultiplier(currency, multiplier)
+      await Promise.all([invalidate(), afterWrite()])
+    },
+    removeCurrency: async (currency: CurrencyDefinition) => {
+      await provider.removeCurrency(currency)
       await invalidate()
     },
   }

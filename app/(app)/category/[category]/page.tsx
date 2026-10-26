@@ -2,7 +2,7 @@
 
 import { use, useMemo } from 'react'
 import Link from 'next/link'
-import { useFullTransactions } from '@/hooks/use-transactions'
+import { useFullTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ interface CategoryPageProps {
 }
 
 export default function CategoryPage({ params }: CategoryPageProps) {
+  const defaultCurrency = useDefaultCurrency()
   const { category: encodedCategory } = use(params)
   const category = decodeURIComponent(encodedCategory)
   const { data: transactions, isLoading, error } = useFullTransactions()
@@ -132,7 +133,7 @@ export default function CategoryPage({ params }: CategoryPageProps) {
               <h1 className="text-3xl font-bold capitalize">{category}</h1>
               <p className="text-muted-foreground">
                 {totalSpent > 0 
-                  ? `${totalSpent.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN across ${filteredTransactions.length} transactions`
+                  ? `${totalSpent.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} ${defaultCurrency} across ${filteredTransactions.length} transactions`
                   : 'No transactions in selected period'
                 }
               </p>
@@ -155,7 +156,7 @@ export default function CategoryPage({ params }: CategoryPageProps) {
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
-              <PieChart data={pieData} height={350} />
+              <PieChart unit={defaultCurrency} data={pieData} height={350} />
             ) : (
               <div className="flex items-center justify-center h-[350px] text-muted-foreground">
                 No transactions in selected period
@@ -173,6 +174,7 @@ export default function CategoryPage({ params }: CategoryPageProps) {
           <CardContent>
             {lineData.length > 0 ? (
               <LineChart
+                yAxisLabel={defaultCurrency}
                 labels={lineData.map(point => point.label)}
                 series={[{
                   name: category,

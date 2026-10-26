@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfDay, format, startOfDay, startOfMonth, subMonths } from 'date-fns'
-import { useRecentTransactions } from '@/hooks/use-transactions'
+import { useRecentTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
@@ -115,6 +115,7 @@ function shiftComparisonPoints(
 }
 
 export default function DashboardPage() {
+  const defaultCurrency = useDefaultCurrency()
   const { data: transactions, isLoading, error } = useRecentTransactions()
   const { filters, setSelectedCategories, setSelectedDateRange } = useFilters()
   const { selectedMonths, selectedYears, selectedCategories, selectedDateRange } = filters
@@ -286,7 +287,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
             </div>
             <p className="text-xs text-muted-foreground">
               {filterLabel.trim() || 'Selected period'}
@@ -328,7 +329,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
-              <PieChart data={pieData} onSliceClick={handlePieSliceClick} height={350} />
+              <PieChart unit={defaultCurrency} data={pieData} onSliceClick={handlePieSliceClick} height={350} />
             ) : (
               <div className="flex items-center justify-center h-[350px] text-muted-foreground">
                 No transactions in selected period
@@ -397,6 +398,7 @@ export default function DashboardPage() {
           <CardContent>
             {lineChartConfig.labels.length > 0 ? (
               <LineChart
+                yAxisLabel={defaultCurrency}
                 labels={lineChartConfig.labels}
                 series={lineChartConfig.series}
                 height={350}
