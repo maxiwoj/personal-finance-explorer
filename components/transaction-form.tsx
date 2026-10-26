@@ -7,7 +7,7 @@ import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -154,22 +154,79 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
   )
 }
 
+interface CategoryManagerProps {
+  categories: CategoryDefinition[]
+  newCategory: string
+  onNewCategoryChange: (value: string) => void
+  onAdd: () => void
+  onToggle: (category: CategoryDefinition) => void
+  onDone: () => void
+  disabled: boolean
+}
+
+// Chooses which categories the Add page offers; hiding never changes existing transactions
+function CategoryManager({ categories, newCategory, onNewCategoryChange, onAdd, onToggle, onDone, disabled }: CategoryManagerProps) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <ul className="space-y-1">
+        {categories.map(c => (
+          <li key={c.name} className="flex items-center justify-between gap-2 text-sm">
+            <span className={cn(c.hidden && 'text-muted-foreground')}>
+              {c.name}{c.hidden && ' (hidden)'}
+            </span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onToggle(c)} disabled={disabled}>
+              {c.hidden ? 'Show' : 'Hide'}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <Input
+          value={newCategory}
+          onChange={(e) => onNewCategoryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            onAdd()
+          }}
+          placeholder="New category"
+          aria-label="New category"
+          autoComplete="off"
+        />
+        <Button type="button" variant="outline" onClick={onAdd} disabled={disabled}>
+          Add
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Hidden categories are only left out when adding; their transactions do not change.
+      </p>
+      <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  )
+}
+
 export function TransactionForm({ original, onSaved, onCancel }: TransactionFormProps) {
   const provider = useFinanceDataProvider()
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
-  const { createCategoryList, addCategory, renameCategory } = useCategoryListActions()
+  const { createCategoryList, addCategory, setCategoryHidden } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
-  // The edited transaction as the sheet now holds it: renaming its category rewrites its row
-  const [baseline, setBaseline] = useState(original)
+
+  // Hidden categories are only left out when adding; editing offers the whole list
+  const hiddenCategories = useMemo(
+    () => new Set(original ? [] : (categoryList ?? []).filter(c => c.hidden).map(c => c.name)),
+    [categoryList, original]
+  )
 
   // The categories tab fixes the order; without it, alphabetical keeps chips in place between visits
   const categories = useMemo(() => {
     const values = categoryList?.length
-      ? categoryList.map(c => c.name)
+      ? categoryList.filter(c => !hiddenCategories.has(c.name)).map(c => c.name)
       : [...new Set((transactions ?? []).map(t => t.category))].sort()
-    return baseline && !values.includes(baseline.category) ? [...values, baseline.category] : values
-  }, [categoryList, baseline, transactions])
+    return original && !values.includes(original.category) ? [...values, original.category] : values
+  }, [categoryList, hiddenCategories, original, transactions])
 
   // Only currencies already in the sheet: its formulas may not convert an unknown one to PLN
   const currencies = useMemo(() => {
@@ -178,7 +235,10 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     return values.length > 0 ? values : ['PLN']
   }, [original, transactions])
 
-  const quickPicks = useMemo(() => getQuickPicks(transactions ?? []), [transactions])
+  const quickPicks = useMemo(
+    () => getQuickPicks(transactions ?? []).filter(pick => !hiddenCategories.has(pick.category)),
+    [hiddenCategories, transactions]
+  )
 
   const [amount, setAmount] = useState(original ? String(recordedAmount(original).amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
@@ -190,9 +250,9 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCreatingList, setIsCreatingList] = useState(false)
-  // null while not renaming; otherwise the new name typed for the selected category
-  const [renameTo, setRenameTo] = useState<string | null>(null)
-  const [isRenaming, setIsRenaming] = useState(false)
+  const [isManaging, setIsManaging] = useState(false)
+  const [newCategory, setNewCategory] = useState('')
+  const [isUpdatingList, setIsUpdatingList] = useState(false)
 
   const effectiveCurrency = currency ?? currencies[0]
   const normalizedCategory = category.trim().toLowerCase()
@@ -208,39 +268,48 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     try {
       const ordered = byFrequency((transactions ?? []).map(t => t.category))
       await createCategoryList(ordered.map(name => ({ name, color: getCategoryColor(name) })))
+      return true
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create the category list.')
+      return false
     } finally {
       setIsCreatingList(false)
     }
   }
 
-  // Only categories already in use can be renamed, not one typed with "New"
-  const canRename = categories.includes(normalizedCategory)
-  const renameTarget = renameTo?.trim().toLowerCase() ?? ''
+  // Managing needs the categories tab, so it is created first when missing
+  const handleOpenManager = async () => {
+    if (categoryList === null && !await handleCreateCategoryList()) return
+    setIsManaging(true)
+  }
 
-  const handleRenameCategory = async () => {
-    if (!renameTarget || renameTarget === normalizedCategory) {
-      setError('Enter a new name for the category.')
+  // Only the categories tab changes: transactions keep their category whether it is hidden or not
+  const updateCategoryList = async (name: string, hidden: boolean) => {
+    setIsUpdatingList(true)
+    setError(null)
+    try {
+      await setCategoryHidden(name, hidden)
+      if (hidden && normalizedCategory === name) setCategory('')
+      return true
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Failed to update the category list.')
+      return false
+    } finally {
+      setIsUpdatingList(false)
+    }
+  }
+
+  const handleAddCategory = async () => {
+    const name = newCategory.trim().toLowerCase()
+    if (!name) {
+      setError('Enter a category name.')
       return
     }
-    if (renameTarget.length > MAX_TEXT_LENGTH) {
+    if (name.length > MAX_TEXT_LENGTH) {
       setError(`Text fields must be at most ${MAX_TEXT_LENGTH} characters.`)
       return
     }
-
-    setIsRenaming(true)
-    setError(null)
-    try {
-      await renameCategory(normalizedCategory, renameTarget)
-      if (baseline?.category === normalizedCategory) setBaseline({ ...baseline, category: renameTarget })
-      setCategory(renameTarget)
-      setRenameTo(null)
-    } catch (renameError) {
-      setError(renameError instanceof Error ? renameError.message : 'Failed to rename the category.')
-    } finally {
-      setIsRenaming(false)
-    }
+    if (await updateCategoryList(name, false)) setNewCategory('')
   }
 
   const handleSubmit = async (event: FormEvent) => {
@@ -268,10 +337,14 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setError(null)
     setIsSaving(true)
     try {
-      await saveTransaction(result, baseline)
+      await saveTransaction(result, original)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not fatal
-      if (categoryList && !categoryList.some(c => c.name === result.category.toLowerCase())) {
+      const listed = categoryList?.find(c => c.name === result.category.toLowerCase())
+      if (categoryList && !listed) {
         await addCategory(result.category.toLowerCase()).catch(() => undefined)
+      } else if (listed?.hidden && !original) {
+        // Typed in with "New", so it is wanted on the Add page again
+        await setCategoryHidden(listed.name, false).catch(() => undefined)
       }
       onSaved(result)
     } catch (saveError) {
@@ -309,42 +382,23 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
             in your spreadsheet to set their order and colors.
           </p>
         )}
-        {renameTo !== null && canRename ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                value={renameTo}
-                onChange={(e) => setRenameTo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  e.preventDefault()
-                  void handleRenameCategory()
-                }}
-                aria-label={`New name for ${normalizedCategory}`}
-                autoComplete="off"
-                autoFocus
-                className="h-11"
-              />
-              <Button type="button" variant="outline" size="lg" onClick={() => void handleRenameCategory()} disabled={isRenaming}>
-                {isRenaming ? 'Renaming...' : 'Rename'}
-              </Button>
-              <Button type="button" variant="ghost" size="lg" onClick={() => setRenameTo(null)} disabled={isRenaming}>
-                Cancel
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {categories.includes(renameTarget) && renameTarget !== normalizedCategory
-                ? `"${renameTarget}" already exists: every "${normalizedCategory}" transaction moves into it.`
-                : `Renames "${normalizedCategory}" in every transaction${categoryList ? ' and in the category list' : ''}.`}
-            </p>
-          </div>
-        ) : canRename && (
+        {!original && provider.mode === 'google' && (isManaging && categoryList ? (
+          <CategoryManager
+            categories={categoryList}
+            newCategory={newCategory}
+            onNewCategoryChange={setNewCategory}
+            onAdd={() => void handleAddCategory()}
+            onToggle={(c) => void updateCategoryList(c.name, !c.hidden)}
+            onDone={() => setIsManaging(false)}
+            disabled={isUpdatingList}
+          />
+        ) : (
           <p className="text-xs text-muted-foreground">
-            <button type="button" className="underline underline-offset-2" onClick={() => setRenameTo(normalizedCategory)}>
-              Rename &quot;{normalizedCategory}&quot;
+            <button type="button" className="underline underline-offset-2" onClick={() => void handleOpenManager()} disabled={categoryList === undefined || isCreatingList}>
+              Manage categories
             </button>
           </p>
-        )}
+        ))}
       </div>
 
       <div className="space-y-2">

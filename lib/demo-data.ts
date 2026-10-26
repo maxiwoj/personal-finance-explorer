@@ -253,8 +253,3 @@ export async function deleteDemoTransaction(original: Transaction) {
 
   saveDemoTransactions(transactions.filter(t => t.transactionId !== original.transactionId))
 }
-
-export async function renameDemoCategory(from: string, to: string) {
-  const transactions = await getOrCreateDemoTransactions()
-  saveDemoTransactions(transactions.map(t => t.category === from ? { ...t, category: to } : t))
-}

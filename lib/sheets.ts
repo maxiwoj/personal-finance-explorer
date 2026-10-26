@@ -426,7 +426,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
 // null when the spreadsheet has no categories tab, so callers fall back to derived categories
 export async function fetchCategories(accessToken: string, spreadsheetId: string): Promise<CategoryDefinition[] | null> {
-  const range = `${SHEETS.CATEGORIES}!A:B`
+  const range = `${SHEETS.CATEGORIES}!A:C`
   let data: { values?: string[][] }
 
   try {
@@ -443,9 +443,11 @@ export async function fetchCategories(accessToken: string, spreadsheetId: string
 
   return rows
     .filter((row, index) => !(index === 0 && /^categor(y|ies)$/i.test(row[0]?.trim() ?? '')))
-    .map(([name, color]) => ({
+    .map(([name, color, hidden]) => ({
       name: name?.trim().toLowerCase() ?? '',
       color: color && HEX_COLOR.test(color.trim()) ? color.trim() : null,
+      // Any value hides it, except FALSE, so a checkbox column works too
+      hidden: !!hidden?.trim() && !/^false$/i.test(hidden.trim()),
     }))
     .filter(({ name }) => {
       if (!name || seen.has(name)) return false
@@ -475,40 +477,25 @@ export async function createCategoriesSheet(accessToken: string, spreadsheetId: 
   await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     body: JSON.stringify({
-      values: [['Category', 'Color'], ...categories.map(({ name, color }) => [asText(name), color ?? ''])],
+      values: [['Category', 'Color', 'Hidden'], ...categories.map(({ name, color }) => [asText(name), color ?? ''])],
     }),
   })
 }
 
-// Renames a category in every transaction (column C of the full tab; the recent tab is derived
-// from it) and in the categories tab, so history is never split between the old and new name.
-// Renaming to a category that already exists merges the two: the old row leaves the list.
-// Cells are read with formulas, so a category set by a formula is left as it is.
-export async function renameCategory(accessToken: string, spreadsheetId: string, from: string, to: string): Promise<void> {
+// Hides or shows a category on the Add page by setting column C of its row; transactions are
+// never touched. Showing a category that is not in the list adds it.
+export async function setCategoryHidden(accessToken: string, spreadsheetId: string, name: string, hidden: boolean): Promise<void> {
   const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
-  const matches = (cell: unknown, name: string) => typeof cell === 'string' && cell.trim().toLowerCase() === name
-
-  const categoryColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!C:C`)}?valueRenderOption=FORMULA`)
-  const transactionCells: unknown[][] = categoryColumn.values || []
-  const data = transactionCells.flatMap((row, index) => matches(row[0], from)
-    ? [{ range: `${SHEETS.FULL}!C${index + 1}`, values: [[asText(to)]] }]
+  const column = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.CATEGORIES}!A:A`)}`)
+  const cells: string[][] = column.values || []
+  const data = cells.flatMap((row, index) => row[0]?.trim().toLowerCase() === name
+    ? [{ range: `${SHEETS.CATEGORIES}!C${index + 1}`, values: [[hidden ? 'hidden' : '']] }]
     : [])
 
-  const categoryList = await fetchCategories(accessToken, spreadsheetId)
-  if (categoryList) {
-    const listColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.CATEGORIES}!A:A`)}?valueRenderOption=FORMULA`)
-    const listCells: unknown[][] = listColumn.values || []
-    const merging = categoryList.some(c => c.name === to)
-
-    listCells.forEach((row, index) => {
-      if (!matches(row[0], from)) return
-      data.push(merging
-        ? { range: `${SHEETS.CATEGORIES}!A${index + 1}:B${index + 1}`, values: [['', '']] }
-        : { range: `${SHEETS.CATEGORIES}!A${index + 1}`, values: [[asText(to)]] })
-    })
+  if (data.length === 0) {
+    if (!hidden) await appendCategory(accessToken, spreadsheetId, name)
+    return
   }
-
-  if (data.length === 0) return
 
   await sheetsRequest(accessToken, `${valuesUrl}:batchUpdate`, {
     method: 'POST',
