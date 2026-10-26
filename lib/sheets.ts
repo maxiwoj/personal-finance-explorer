@@ -309,6 +309,16 @@ export async function updateTransaction(
     throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
   }
 
+  // A formula such as =20-5 records a return by hand; overwriting it with a number would lose that
+  if (input.amount !== original.amountOriginal) {
+    const formulas = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!D${sheetRow}`)}?valueRenderOption=FORMULA`)
+    const amountCell = formulas.values?.[0]?.[0]
+
+    if (typeof amountCell === 'string' && amountCell.startsWith('=')) {
+      throw new Error(`The amount is a formula in the spreadsheet (${amountCell}). Change it there to keep it.`)
+    }
+  }
+
   const next = toInputRow(input)
   const changed = [
     input.timestamp.getTime() !== original.timestamp.getTime(),
