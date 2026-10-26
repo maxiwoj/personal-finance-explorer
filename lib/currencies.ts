@@ -9,10 +9,18 @@ import type { CurrencyDefinition, CurrencyList, Transaction } from './types'
 //   row 4: a custom currency's formula, which repeats the multiplier for every date
 export const CURRENCY_LAYOUT_ROWS = 4
 
-// The template's first date, used when no existing formula reveals the sheet's own
-const FALLBACK_START_DATE = { year: 2025, month: 11, day: 1 }
+// The expenses formula looks up rates in currencyDates!A:ZZ, so no pair may go past ZZ
+export const LAST_LOOKUP_COLUMN = 701
 
-export type StartDate = typeof FALLBACK_START_DATE
+// Where the rate tables start: a fixed date, or the earliest transaction's day, so that a
+// backdated transaction is always covered. Every pair must use the same start: the expenses
+// formula finds a date in column A and reads the rate from the same row in the pair.
+export type StartDate = { year: number; month: number; day: number } | 'earliestTransaction'
+
+// The template's first date, used when no existing formula reveals the sheet's own
+const FALLBACK_START_DATE: StartDate = { year: 2025, month: 11, day: 1 }
+
+const EARLIEST_TRANSACTION_DATE = 'INT(MIN(expenses!A:A))'
 
 // What adding a currency needs besides the list: where the next pair goes and the first date
 export type CurrencyLayout = CurrencyList & { nextColumn: number; startDate: StartDate }
@@ -29,7 +37,9 @@ export function columnLetter(index: number): string {
   return letters
 }
 
-function dateLiteral({ year, month, day }: StartDate, separator: string) {
+function startExpression(start: StartDate, separator: string) {
+  if (start === 'earliestTransaction') return EARLIEST_TRANSACTION_DATE
+  const { year, month, day } = start
   return `DATE(${[year, month, day].join(separator)})`
 }
 
@@ -37,14 +47,14 @@ function dateLiteral({ year, month, day }: StartDate, separator: string) {
 // the default currency itself gets a constant 1. firstColumn is the pair's first column (0-based).
 export function standardCurrencyFormula(firstColumn: number, start: StartDate): string {
   const code = `${columnLetter(firstColumn + 1)}1`
-  const date = dateLiteral(start, ', ')
+  const date = startExpression(start, ', ')
   return `=IF(ISBLANK(${code}), "", IF(EXACT($B1, ${code}), VSTACK({"Date", "Close"}, HSTACK(SEQUENCE(TODAY() - ${date} + 1, 1, ${date}), MAKEARRAY(TODAY() - ${date} + 1, 1, LAMBDA(r, c, 1)))), GOOGLEFINANCE("CURRENCY:" & $B1 & ${code}, "price", ${date}, TODAY(), 1)))`
 }
 
 // Formula Y: the multiplier in the pair's first cell, repeated for every date
 export function customCurrencyFormula(firstColumn: number, start: StartDate): string {
   const multiplier = `${columnLetter(firstColumn)}1`
-  const date = dateLiteral(start, ',')
+  const date = startExpression(start, ',')
   return `={ARRAYFORMULA(${date} + SEQUENCE(TODAY() - ${date} + 1, 1, 0)), ARRAYFORMULA(IF(ROW(INDIRECT("A1:A" & TODAY()-${date}+1)), ${multiplier}))}`
 }
 
@@ -76,17 +86,28 @@ function cellText(value: unknown) {
   return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''
 }
 
-// The first DATE(y, m, d) in the existing currency formulas, so new ones cover the same dates
+// The start of the existing currency formulas, so new ones cover the same dates
 export function findStartDate(rows: unknown[][]): StartDate {
   for (const row of rows.slice(2, CURRENCY_LAYOUT_ROWS)) {
     for (const cell of row ?? []) {
-      const match = cellText(cell).match(/^=.*?DATE\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)/i)
+      const formula = cellText(cell)
+      if (!formula.startsWith('=')) continue
+      if (/MIN\(\s*expenses!A/i.test(formula)) return 'earliestTransaction'
+      const match = formula.match(/DATE\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)/i)
       if (match) {
         return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
       }
     }
   }
   return FALLBACK_START_DATE
+}
+
+// The first pair left empty by a removed currency, else the pair after the last used column
+function findFreeColumn(rows: unknown[][], width: number) {
+  for (let column = 2; column < width; column += 2) {
+    if (rows.every(row => !cellText(row?.[column]) && !cellText(row?.[column + 1]))) return column
+  }
+  return width + (width % 2)
 }
 
 // rows: currencyDates!1:4 read with valueRenderOption=FORMULA. null when B1 holds no currency.
@@ -115,11 +136,11 @@ export function parseCurrencyLayout(rows: unknown[][]): CurrencyLayout | null {
     })
   }
 
-  return { defaultCurrency, currencies, nextColumn: width + (width % 2), startDate: findStartDate(rows) }
+  return { defaultCurrency, currencies, nextColumn: findFreeColumn(rows, width), startDate: findStartDate(rows) }
 }
 
 // A message for invalid input, or null when the currency can be added
-export function validateNewCurrency(list: CurrencyList, input: { code: string; multiplier?: number }): string | null {
+export function validateNewCurrency(layout: CurrencyLayout, input: { code: string; multiplier?: number }): string | null {
   if (input.multiplier === undefined) {
     if (!STANDARD_CODE.test(input.code)) return 'Use a three-letter currency code, e.g. EUR.'
   } else {
@@ -127,8 +148,12 @@ export function validateNewCurrency(list: CurrencyList, input: { code: string; m
     if (!Number.isFinite(input.multiplier) || input.multiplier <= 0) return 'The multiplier must be a positive number.'
   }
 
-  if (list.currencies.some(c => c.code.toUpperCase() === input.code.toUpperCase())) {
+  if (layout.currencies.some(c => c.code.toUpperCase() === input.code.toUpperCase())) {
     return `${input.code} is already in the list.`
+  }
+
+  if (layout.nextColumn + 1 > LAST_LOOKUP_COLUMN) {
+    return `There is no room left up to column ${columnLetter(LAST_LOOKUP_COLUMN)}, the last one the expenses formula looks up. Remove an unused currency first.`
   }
 
   return null

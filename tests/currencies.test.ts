@@ -8,6 +8,7 @@ import {
   newCurrencyCells,
   parseCurrencyLayout,
   resolveDefaultCurrency,
+  LAST_LOOKUP_COLUMN,
   standardCurrencyFormula,
   validateNewCurrency,
 } from '../lib/currencies.ts'
@@ -53,6 +54,15 @@ describe('standardCurrencyFormula', () => {
     const formula = standardCurrencyFormula(2, { year: 2024, month: 1, day: 15 })
     assert.ok(!formula.includes('DATE(2025'))
     assert.equal(formula.match(/DATE\(2024, 1, 15\)/g)?.length, 4)
+  })
+})
+
+describe('earliest transaction start', () => {
+  it('replaces every DATE in formula X and Y with the earliest transaction day', () => {
+    const x = standardCurrencyFormula(0, 'earliestTransaction')
+    assert.equal(x, FORMULA_X_A3.replaceAll('DATE(2025, 11, 1)', 'INT(MIN(expenses!A:A))'))
+    const y = customCurrencyFormula(6, 'earliestTransaction')
+    assert.equal(y, FORMULA_Y_G4.replaceAll('DATE(2025,11,1)', 'INT(MIN(expenses!A:A))'))
   })
 })
 
@@ -112,13 +122,20 @@ describe('parseCurrencyLayout', () => {
     assert.equal(parseCurrencyLayout([['DEFAULT', '']]), null)
   })
 
-  it('skips cleared pairs without reusing their columns', () => {
+  it('skips a removed pair and puts the next currency in its columns', () => {
     const rows = SHEET_ROWS.map(row => [...row])
     rows[0][3] = ''
     rows[1][2] = rows[1][3] = ''
     rows[2][2] = ''
     const layout = parseCurrencyLayout(rows)
     assert.deepEqual(layout?.currencies.map(c => c.code), ['PLN', 'USD', 'JOINED_ACCOUNT'])
+    assert.equal(layout?.nextColumn, 2)
+  })
+
+  it('does not treat a pair with leftover content as free', () => {
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[0][3] = ''
+    const layout = parseCurrencyLayout(rows)
     assert.equal(layout?.nextColumn, 8)
   })
 
@@ -129,6 +146,11 @@ describe('parseCurrencyLayout', () => {
 })
 
 describe('findStartDate', () => {
+  it('recognises formulas starting at the earliest transaction', () => {
+    const rows = [['DEFAULT', 'PLN'], [1, 2], [standardCurrencyFormula(0, 'earliestTransaction')]]
+    assert.equal(findStartDate(rows), 'earliestTransaction')
+  })
+
   it('falls back to the template date without formulas', () => {
     assert.deepEqual(findStartDate([['DEFAULT', 'PLN'], [1, 2]]), START)
   })
@@ -152,6 +174,11 @@ describe('validateNewCurrency', () => {
     assert.match(validateNewCurrency(list, { code: 'JOINED_ACCOUNT', multiplier: 1 }) ?? '', /already/)
     const lowercase = { ...list, currencies: [...list.currencies, { ...list.currencies[1], code: 'gbp' }] }
     assert.match(validateNewCurrency(lowercase, { code: 'GBP' }) ?? '', /already/)
+  })
+
+  it('refuses a pair past the last column the expenses formula looks up', () => {
+    assert.equal(validateNewCurrency({ ...list, nextColumn: LAST_LOOKUP_COLUMN - 1 }, { code: 'GBP' }), null)
+    assert.match(validateNewCurrency({ ...list, nextColumn: LAST_LOOKUP_COLUMN + 1 }, { code: 'GBP' }) ?? '', /column ZZ/)
   })
 
   it('rejects malformed codes and multipliers', () => {

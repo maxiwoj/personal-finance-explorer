@@ -524,8 +524,9 @@ async function fetchSheetGrid(accessToken: string, spreadsheetId: string, title:
   return { sheetId: properties.sheetId as number, columnCount: (properties.gridProperties?.columnCount ?? 0) as number }
 }
 
-// Adds a standard currency (no multiplier) or a custom one in the first pair of columns after
-// all existing ones. Gaps left by removed currencies are not reused, so nothing is overwritten.
+// Adds a standard currency (no multiplier) or a custom one in the first pair of columns left
+// empty by a removed currency, else after all existing ones. The pair's whole columns must be
+// empty, so nothing is overwritten.
 export async function addCurrency(
   accessToken: string,
   spreadsheetId: string,
