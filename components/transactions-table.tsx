@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Transaction } from '@/lib/types'
 import { getCategoryColor } from '@/lib/colors'
 import { TransactionDetailModal } from './transaction-detail-modal'
+import { TransactionIndicators } from './transaction-indicators'
 import {
   Pagination,
   PaginationContent,
@@ -154,8 +155,11 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
                   <td className="py-3 text-muted-foreground whitespace-nowrap">
                     {formatDateOnly(t.timestamp)}
                   </td>
-                  <td className="py-3 max-w-[200px] truncate" title={t.what}>
-                    {t.what}
+                  <td className="py-3 max-w-[200px]" title={t.what}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{t.what}</span>
+                      <TransactionIndicators transaction={t} />
+                    </div>
                   </td>
                   {showCategory && (
                     <td className="py-3">
@@ -197,6 +201,7 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
                     </div>
                     <div className="break-words text-sm font-medium text-foreground leading-tight">
                       {t.what}
+                      <TransactionIndicators transaction={t} className="ml-1.5 inline-flex align-middle" />
                     </div>
                     {showCategory && (
                       <span

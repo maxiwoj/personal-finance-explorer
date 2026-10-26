@@ -210,7 +210,7 @@ function saveDemoTransactions(transactions: Transaction[]) {
   window.localStorage.setItem(DEMO_STORAGE_KEY, serializeTransactions(sorted))
 }
 
-function fromInput(input: TransactionInput, transactionId: string): Transaction {
+function fromInput(input: TransactionInput, transactionId: string, existing?: Transaction): Transaction {
   const multiplier = DEMO_CURRENCY_MULTIPLIERS[input.currency as DemoCurrency] ?? 1
 
   return {
@@ -223,6 +223,8 @@ function fromInput(input: TransactionInput, transactionId: string): Transaction 
     monthYear: formatMonthYear(input.timestamp),
     monthName: '',
     transactionId,
+    notes: input.notes ?? existing?.notes ?? '',
+    returnOf: input.returnOf ?? existing?.returnOf ?? '',
   }
 }
 
@@ -239,6 +241,15 @@ export async function updateDemoTransaction(original: Transaction, input: Transa
   }
 
   saveDemoTransactions(transactions.map(t => t.transactionId === original.transactionId
-    ? fromInput(input, t.transactionId)
+    ? fromInput(input, t.transactionId, t)
     : t))
+}
+
+export async function deleteDemoTransaction(original: Transaction) {
+  const transactions = await getOrCreateDemoTransactions()
+  if (transactions.some(t => t.returnOf === original.transactionId)) {
+    throw new Error('This purchase has returns. Remove them first.')
+  }
+
+  saveDemoTransactions(transactions.filter(t => t.transactionId !== original.transactionId))
 }

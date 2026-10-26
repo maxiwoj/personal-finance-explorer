@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Transaction } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Wallet, ArrowRight } from 'lucide-react'
+import { TransactionIndicators } from './transaction-indicators'
 
 interface RecentTransactionsCarouselProps {
   transactions: Transaction[]
@@ -69,9 +70,12 @@ export function RecentTransactionsCarousel({
               <CardContent className="p-3.5">
                 <div className="flex justify-between items-start gap-2">
                   <div className="space-y-1 min-w-0">
-                    <p className="text-sm font-semibold leading-tight truncate group-hover:text-primary transition-colors">
-                      {transaction.what}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold leading-tight truncate group-hover:text-primary transition-colors">
+                        {transaction.what}
+                      </p>
+                      <TransactionIndicators transaction={transaction} />
+                    </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal bg-background/50 border-none">
                         {transaction.category}

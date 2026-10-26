@@ -1,4 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
+import { recordedAmount } from './returns'
 import type { CategoryDefinition, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
@@ -102,8 +103,8 @@ function parseRow(row: string[]): Transaction | null {
   try {
     if (row.length < 7) return null
     
-    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID
-    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId] = row
+    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID, Notes, ReturnOf
+    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId, notes, returnOf] = row
     
     if (!timestamp || !what || !category) return null
     
@@ -125,7 +126,9 @@ function parseRow(row: string[]): Transaction | null {
       amountPLN: pAmountPLN !== null ? pAmountPLN : pAmountOriginal,
       monthYear: derivedMonthYear,
       monthName: '', // Not used - derive from timestamp when needed
-      transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`
+      transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`,
+      notes: notes?.trim() ?? '',
+      returnOf: returnOf?.trim() ?? '',
     }
   } catch {
     return null
@@ -137,7 +140,7 @@ export async function fetchSheetData(
   spreadsheetId: string,
   sheetName: string
 ): Promise<Transaction[]> {
-  const range = `${sheetName}!A:H`
+  const range = `${sheetName}!A:J`
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
   
   const response = await fetch(url, {
@@ -196,8 +199,9 @@ export function describeSpreadsheetAccessError(error: unknown): string | null {
   return null
 }
 
-// Only the input columns (Timestamp..Currency) are written; the template's ARRAYFORMULAs
-// derive AmountPLN, MonthYear and TransactionID.
+// The input columns (Timestamp..Currency) are written; the template's ARRAYFORMULAs derive
+// AmountPLN and MonthYear. TransactionID is a stored value the app writes, unless the sheet still
+// derives it with a formula (see docs/migrations/stable-transaction-ids.md).
 const INPUT_RANGE_END = 'E'
 
 function pad(value: number) {
@@ -255,17 +259,59 @@ async function sheetsRequest(accessToken: string, url: string, init: RequestInit
   return response.json()
 }
 
+// Sheets made from the original template derive TransactionID from the row number with an
+// ARRAYFORMULA in H1. Writing an ID there would break that formula, and its IDs shift when rows
+// are deleted or sorted, so returns cannot link to them.
+async function hasStoredIds(accessToken: string, spreadsheetId: string) {
+  const range = `${SHEETS.FULL}!H1:H2`
+  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+  const cells: unknown[][] = data.values || []
+  return !cells.some(row => typeof row[0] === 'string' && row[0].startsWith('='))
+}
+
+// Index into the TransactionID column, which is also the sheet row number minus one
+async function findRowIndex(accessToken: string, spreadsheetId: string, transactionId: string) {
+  const range = `${SHEETS.FULL}!H:H`
+  const idColumn = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
+  const ids: string[][] = idColumn.values || []
+  const matches = ids.flatMap((row, index) => row[0]?.trim() === transactionId ? [index] : [])
+
+  if (matches.length === 0) {
+    throw new Error('This transaction was not found in the spreadsheet. Reload the data and try again.')
+  }
+
+  if (matches.length > 1) {
+    throw new Error('Several rows share this transaction ID. Edit it directly in the spreadsheet.')
+  }
+
+  return matches[0]
+}
+
 export async function appendTransaction(
   accessToken: string,
   spreadsheetId: string,
   input: TransactionInput
 ): Promise<void> {
-  const range = `${SHEETS.FULL}!A:${INPUT_RANGE_END}`
+  const storedIds = await hasStoredIds(accessToken, spreadsheetId)
+
+  if (input.returnOf) {
+    if (!storedIds) {
+      throw new Error('Returns need stored transaction IDs. Update your spreadsheet as described in docs/migrations/stable-transaction-ids.md.')
+    }
+    // The purchase must be exactly one row, or the return would link to nothing or to several rows
+    await findRowIndex(accessToken, spreadsheetId, input.returnOf)
+  }
+
+  // null leaves the formula columns (AmountPLN, MonthYear) and empty Notes untouched
+  const values = storedIds
+    ? [...toInputRow(input), null, null, crypto.randomUUID(), null, input.returnOf ?? null]
+    : toInputRow(input)
+  const range = `${SHEETS.FULL}!A:${storedIds ? 'J' : INPUT_RANGE_END}`
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
 
   await sheetsRequest(accessToken, url, {
     method: 'POST',
-    body: JSON.stringify({ values: [toInputRow(input)] }),
+    body: JSON.stringify({ values: [values] }),
   })
 }
 
@@ -277,8 +323,9 @@ function matchesTransaction(row: string[], original: Transaction) {
     parsed.timestamp.getTime() === original.timestamp.getTime() &&
     parsed.what === original.what &&
     parsed.category === original.category &&
-    parsed.amountOriginal === original.amountOriginal &&
-    parsed.currency === original.currency
+    parsed.amountOriginal === recordedAmount(original).amountOriginal &&
+    parsed.currency === original.currency &&
+    parsed.notes === (original.notes ?? '')
 }
 
 // The row is located by TransactionID, downloading only that column instead of the whole tab.
@@ -290,37 +337,38 @@ export async function updateTransaction(
   input: TransactionInput
 ): Promise<void> {
   const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
-  const idColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!H:H`)}`)
-  const ids: string[][] = idColumn.values || []
-  const matches = ids.flatMap((row, index) => row[0]?.trim() === original.transactionId ? [index] : [])
-
-  if (matches.length === 0) {
-    throw new Error('This transaction was not found in the spreadsheet. Reload the data and try again.')
-  }
-
-  if (matches.length > 1) {
-    throw new Error('Several rows share this transaction ID. Edit it directly in the spreadsheet.')
-  }
-
-  const sheetRow = matches[0] + 1
-  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:H${sheetRow}`)}`)
+  const sheetRow = await findRowIndex(accessToken, spreadsheetId, original.transactionId) + 1
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:I${sheetRow}`)}`)
 
   if (!matchesTransaction(current.values?.[0] ?? [], original)) {
     throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
   }
 
-  const next = toInputRow(input)
+  // A formula such as =20-5 records a return by hand; overwriting it with a number would lose that
+  const originalAmount = recordedAmount(original).amountOriginal
+
+  if (input.amount !== originalAmount) {
+    const formulas = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!D${sheetRow}`)}?valueRenderOption=FORMULA`)
+    const amountCell = formulas.values?.[0]?.[0]
+
+    if (typeof amountCell === 'string' && amountCell.startsWith('=')) {
+      throw new Error(`The amount is a formula in the spreadsheet (${amountCell}). Change it there to keep it.`)
+    }
+  }
+
+  const next = [...toInputRow(input), asText(input.notes ?? '')]
   const changed = [
     input.timestamp.getTime() !== original.timestamp.getTime(),
     input.what !== original.what,
     input.category.toLowerCase() !== original.category,
-    input.amount !== original.amountOriginal,
+    input.amount !== originalAmount,
     input.currency !== original.currency,
+    input.notes !== undefined && input.notes !== (original.notes ?? ''),
   ]
 
   // Only changed cells are written, so untouched cells keep their exact value and formatting
   const data = next.flatMap((value, index) => changed[index]
-    ? [{ range: `${SHEETS.FULL}!${'ABCDE'[index]}${sheetRow}`, values: [[value]] }]
+    ? [{ range: `${SHEETS.FULL}!${'ABCDEI'[index]}${sheetRow}`, values: [[value]] }]
     : [])
 
   if (data.length === 0) return
@@ -328,6 +376,49 @@ export async function updateTransaction(
   await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
+}
+
+// Deleting is only safe with stored IDs: with row-number IDs every later row's ID shifts.
+// A purchase that still has returns is refused, so no return is left pointing at nothing.
+export async function deleteTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  original: Transaction
+): Promise<void> {
+  if (!await hasStoredIds(accessToken, spreadsheetId)) {
+    throw new Error('Deleting needs stored transaction IDs. Update your spreadsheet as described in docs/migrations/stable-transaction-ids.md.')
+  }
+
+  const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
+  const returnOfColumn = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.FULL}!J:J`)}`)
+  const returnOfIds: string[][] = returnOfColumn.values || []
+
+  if (returnOfIds.some(row => row[0]?.trim() === original.transactionId)) {
+    throw new Error('This purchase has returns. Remove them first.')
+  }
+
+  const rowIndex = await findRowIndex(accessToken, spreadsheetId, original.transactionId)
+  const sheetRow = rowIndex + 1
+  const current = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:I${sheetRow}`)}`)
+
+  if (!matchesTransaction(current.values?.[0] ?? [], original)) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+
+  // Row deletion addresses the tab by its numeric sheetId, not its name
+  const metadata = await sheetsRequest(accessToken, `${spreadsheetUrl}?fields=sheets.properties(sheetId,title)`)
+  const sheetId = metadata.sheets?.find((sheet: { properties: { title: string } }) => sheet.properties.title === SHEETS.FULL)?.properties.sheetId
+
+  if (sheetId === undefined) {
+    throw new Error(`The spreadsheet has no "${SHEETS.FULL}" tab.`)
+  }
+
+  await sheetsRequest(accessToken, `${spreadsheetUrl}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }],
+    }),
   })
 }
 

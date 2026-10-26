@@ -4,8 +4,8 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
-import { addDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { appendCategory, appendTransaction, createCategoriesSheet, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
+import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
+import { appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchFullTransactions, fetchRecentTransactions, SheetsApiError, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 
@@ -20,6 +20,7 @@ export interface FinanceDataProvider {
   reloadData: (scope?: FinanceDataScope) => Promise<void>
   addTransaction: (input: TransactionInput) => Promise<void>
   updateTransaction: (original: Transaction, input: TransactionInput) => Promise<void>
+  deleteTransaction: (original: Transaction) => Promise<void>
   // null when the source has no category list (no categories tab, or demo mode)
   getCategories: () => Promise<CategoryDefinition[] | null>
   createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
@@ -147,6 +148,9 @@ function buildGoogleProvider(
     async updateTransaction(original, input) {
       await fetchWithRefresh(accessToken, (token, id) => updateTransaction(token, id, original, input), { isWrite: true })
     },
+    async deleteTransaction(original) {
+      await fetchWithRefresh(accessToken, (token, id) => deleteTransaction(token, id, original), { isWrite: true })
+    },
     async getCategories() {
       return fetchWithRefresh(accessToken, fetchCategories)
     },
@@ -177,6 +181,7 @@ function buildDemoProvider(): FinanceDataProvider {
     },
     addTransaction: addDemoTransaction,
     updateTransaction: updateDemoTransaction,
+    deleteTransaction: deleteDemoTransaction,
     async getCategories() {
       return null
     },
