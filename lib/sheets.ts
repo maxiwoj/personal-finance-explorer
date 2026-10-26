@@ -379,6 +379,49 @@ export async function updateTransaction(
   })
 }
 
+// Deleting is only safe with stored IDs: with row-number IDs every later row's ID shifts.
+// A purchase that still has returns is refused, so no return is left pointing at nothing.
+export async function deleteTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  original: Transaction
+): Promise<void> {
+  if (!await hasStoredIds(accessToken, spreadsheetId)) {
+    throw new Error('Deleting needs stored transaction IDs. Update your spreadsheet as described in docs/migrations/stable-transaction-ids.md.')
+  }
+
+  const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
+  const returnOfColumn = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.FULL}!J:J`)}`)
+  const returnOfIds: string[][] = returnOfColumn.values || []
+
+  if (returnOfIds.some(row => row[0]?.trim() === original.transactionId)) {
+    throw new Error('This purchase has returns. Remove them first.')
+  }
+
+  const rowIndex = await findRowIndex(accessToken, spreadsheetId, original.transactionId)
+  const sheetRow = rowIndex + 1
+  const current = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:I${sheetRow}`)}`)
+
+  if (!matchesTransaction(current.values?.[0] ?? [], original)) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+
+  // Row deletion addresses the tab by its numeric sheetId, not its name
+  const metadata = await sheetsRequest(accessToken, `${spreadsheetUrl}?fields=sheets.properties(sheetId,title)`)
+  const sheetId = metadata.sheets?.find((sheet: { properties: { title: string } }) => sheet.properties.title === SHEETS.FULL)?.properties.sheetId
+
+  if (sheetId === undefined) {
+    throw new Error(`The spreadsheet has no "${SHEETS.FULL}" tab.`)
+  }
+
+  await sheetsRequest(accessToken, `${spreadsheetUrl}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }],
+    }),
+  })
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
 // null when the spreadsheet has no categories tab, so callers fall back to derived categories

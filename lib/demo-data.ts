@@ -244,3 +244,12 @@ export async function updateDemoTransaction(original: Transaction, input: Transa
     ? fromInput(input, t.transactionId, t)
     : t))
 }
+
+export async function deleteDemoTransaction(original: Transaction) {
+  const transactions = await getOrCreateDemoTransactions()
+  if (transactions.some(t => t.returnOf === original.transactionId)) {
+    throw new Error('This purchase has returns. Remove them first.')
+  }
+
+  saveDemoTransactions(transactions.filter(t => t.transactionId !== original.transactionId))
+}

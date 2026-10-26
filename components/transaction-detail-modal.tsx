@@ -11,10 +11,21 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useDeleteTransaction } from '@/hooks/use-transactions'
 import { TransactionForm } from '@/components/transaction-form'
 import { ReturnForm } from '@/components/return-form'
 import { recordedAmount, returnableAmount } from '@/lib/returns'
-import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote, Undo2 } from 'lucide-react'
+import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote, Trash2, Undo2 } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -48,13 +59,38 @@ function formatAmount(value: number) {
 
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
   const [mode, setMode] = useState<'view' | 'edit' | 'return'>('view')
+  // The transaction itself, or one of its returns, awaiting confirmation
+  const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteTransaction = useDeleteTransaction()
   const isEditing = mode !== 'view'
 
   if (!transaction) return null
 
   const handleClose = () => {
     setMode('view')
+    setPendingDelete(null)
+    setDeleteError(null)
     onClose()
+  }
+
+  const isReturnDelete = pendingDelete !== null && pendingDelete !== transaction
+  const blockedByReturns = pendingDelete === transaction && !!transaction.returns
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteTransaction(pendingDelete)
+      handleClose()
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete the transaction.')
+      setPendingDelete(null)
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -109,9 +145,19 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
                   <span className="font-semibold">{formatAmount(recordedAmount(transaction).amountOriginal)} {transaction.currency}</span>
                 </div>
                 {transaction.returns.map(r => (
-                  <div key={r.transactionId} className="flex justify-between text-muted-foreground">
+                  <div key={r.transactionId} className="flex items-center justify-between gap-2 text-muted-foreground">
                     <span>Returned {formatDate(r.timestamp)}</span>
-                    <span className="font-semibold">{formatAmount(r.amountOriginal)} {r.currency}</span>
+                    <span className="flex items-center gap-1">
+                      <span className="font-semibold">{formatAmount(r.amountOriginal)} {r.currency}</span>
+                      <button
+                        type="button"
+                        className="rounded p-0.5 hover:bg-muted hover:text-destructive"
+                        aria-label="Remove this return"
+                        onClick={() => setPendingDelete(r)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -176,7 +222,45 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
                 Return
               </Button>
             )}
+            <Button variant="outline" size="sm" className="gap-2 text-destructive hover:text-destructive" onClick={() => setPendingDelete(transaction)} aria-label="Delete">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
+
+          {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+
+          <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open && !isDeleting) setPendingDelete(null) }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {blockedByReturns ? 'Remove the returns first' : isReturnDelete ? 'Remove this return?' : 'Delete this transaction?'}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {blockedByReturns
+                    ? 'This purchase has returns. Remove them from its details before deleting it.'
+                    : isReturnDelete
+                      ? `The return of ${formatAmount(Math.abs(pendingDelete.amountOriginal))} ${pendingDelete.currency} is deleted from the spreadsheet, and that amount counts towards the purchase again.`
+                      : 'Its row is deleted from the spreadsheet. This cannot be undone from the app.'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>{blockedByReturns ? 'OK' : 'Cancel'}</AlertDialogCancel>
+                {!blockedByReturns && (
+                  <AlertDialogAction
+                    disabled={isDeleting}
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                    onClick={(event) => {
+                      // Keep the dialog open until the delete finishes
+                      event.preventDefault()
+                      void handleDelete()
+                    }}
+                  >
+                    {isDeleting ? 'Deleting...' : isReturnDelete ? 'Remove return' : 'Delete'}
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
         )}
       </DialogContent>

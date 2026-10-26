@@ -11,7 +11,7 @@ This document describes the high-level architecture of the Personal Finance Expl
     - If the access token is expired, the backend uses the refresh token to get a new one (`/api/auth/refresh`).
 5.  **Parsing & Normalization**: Raw rows from Google Sheets are parsed into a consistent `Transaction` type in `lib/sheets.ts`. This includes handling various date formats and currency/amount parsing.
 6.  **State Management**: Financial data is managed using **TanStack Query** for caching and background updates. The `DataProvider` context provides this data to the entire component tree.
-7.  **Writing**: Adding and editing also call the Sheets API from the browser (`lib/sheets.ts`). A new transaction is appended to the `expenses` tab: the input columns A–E plus a generated TransactionID (H) and, for a return, ReturnOf (J); the sheet's formulas derive AmountPLN and MonthYear. A sheet that still derives TransactionID with a formula gets columns A–E only (see [Stable transaction IDs](./migrations/stable-transaction-ids.md)). An edit finds the row by TransactionID, re-reads it to make sure it still matches, and writes only the changed cells; it refuses to overwrite an amount that is a formula. Both caches are then invalidated.
+7.  **Writing**: Adding and editing also call the Sheets API from the browser (`lib/sheets.ts`). A new transaction is appended to the `expenses` tab: the input columns A–E plus a generated TransactionID (H) and, for a return, ReturnOf (J); the sheet's formulas derive AmountPLN and MonthYear. A sheet that still derives TransactionID with a formula gets columns A–E only (see [Stable transaction IDs](./migrations/stable-transaction-ids.md)). An edit finds the row by TransactionID, re-reads it to make sure it still matches, and writes only the changed cells; it refuses to overwrite an amount that is a formula. A delete checks the row the same way and removes it; it is refused for a purchase that still has returns, and for sheets whose IDs are row numbers. Both caches are then invalidated.
 8.  **Returns**: A return is a row with a negative amount whose ReturnOf holds the purchase's TransactionID. `linkReturns` (`lib/returns.ts`) folds returns into their purchase when transactions are read, so analytics see the purchase at its net amount in its own month and category.
 9.  **Categories**: The optional `categories` tab is read once per session (`useCategories`). It sets the order of category buttons on the Add page and seeds `lib/colors.ts` so each category keeps the same color everywhere.
 10. **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
@@ -38,7 +38,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 ## Storage & Privacy
 
--   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit or return a transaction, or create the categories tab.
+-   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, or create the categories tab.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.

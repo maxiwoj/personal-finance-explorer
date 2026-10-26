@@ -25,8 +25,8 @@ Those IDs shift when a row is deleted, inserted or the tab is sorted. Returns li
 
 ## Without the update
 
-The app keeps working: adding a transaction writes the input columns only and leaves the ID formula intact. Recording a return is refused until column H holds stored values.
+The app keeps working: adding a transaction writes the input columns only and leaves the ID formula intact. Recording a return and deleting a transaction are refused until column H holds stored values, since deleting a row would shift every row-number ID after it.
 
 ## How returns are counted
 
-A return is its own row with a negative amount, in the purchase's currency, linked through `ReturnOf`. The app counts it towards the purchase: the purchase is shown at its net amount in its own month and category, with the original amount and each return in its details. If the purchase is not in the loaded data (e.g. it is older than the `expenses2` tab), the return is shown as a row of its own.
+A return is its own row with a negative amount, in the purchase's currency, linked through `ReturnOf`. Reverting a return deletes its row. A purchase can only be deleted once its returns are removed. The app counts a return towards the purchase: the purchase is shown at its net amount in its own month and category, with the original amount and each return in its details. If the purchase is not in the loaded data (e.g. it is older than the `expenses2` tab), the return is shown as a row of its own.
