@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { AlertCircle, Plus } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
   // Edits this transaction when set, otherwise adds a new one
@@ -26,6 +26,7 @@ export const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
 const MAX_TEXT_LENGTH = 200
 const MAX_NOTES_LENGTH = 1000
 const MAX_QUICK_PICKS = 8
+const MAX_CATEGORY_CHIPS = 8
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -95,17 +96,37 @@ interface ChipPickerProps {
   onChange: (value: string) => void
   colorFor?: (value: string) => string
   allowCustom?: boolean
+  // Caps the chips shown; "More" reveals the rest
+  maxVisible?: number
+  // Options most likely to be picked first, deciding which chips are shown when capped
+  rank?: string[]
 }
 
 // One tap selects an option; "New" reveals a text field for values not used before
-function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true }: ChipPickerProps) {
+function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+
+  // The top-ranked options plus the selected one, kept in the options' order so chips do not jump around
+  const visibleOptions = useMemo(() => {
+    if (showAll || maxVisible === undefined || options.length <= maxVisible) return options
+    const top = new Set([...rank.filter(option => options.includes(option)), ...options].slice(0, maxVisible))
+    if (value) top.add(value)
+    return options.filter(option => top.has(option))
+  }, [showAll, maxVisible, options, rank, value])
+  const hiddenCount = options.length - visibleOptions.length
+  const canCollapse = showAll && maxVisible !== undefined && options.length > maxVisible
+
+  const select = (option: string) => {
+    setIsCustom(false)
+    onChange(option)
+  }
 
   return (
     <div className="space-y-2">
       <Label htmlFor={isCustom ? id : undefined}>{label}</Label>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
-        {options.map(option => {
+        {visibleOptions.map(option => {
           const selected = !isCustom && option === value
           const color = colorFor?.(option)
           return (
@@ -114,12 +135,9 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
               type="button"
               role="radio"
               aria-checked={selected}
-              onClick={() => {
-                setIsCustom(false)
-                onChange(option)
-              }}
+              onClick={() => select(option)}
               className={cn(
-                'min-h-10 rounded-full border px-4 text-sm font-medium transition-colors',
+                'min-h-9 rounded-full border px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors',
                 selected ? 'border-transparent text-white' : 'bg-background hover:bg-muted',
                 selected && !color && 'bg-primary text-primary-foreground'
               )}
@@ -130,6 +148,17 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             </button>
           )
         })}
+        {(hiddenCount > 0 || canCollapse) && (
+          <button
+            type="button"
+            aria-expanded={showAll}
+            onClick={() => setShowAll(!showAll)}
+            className="min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1 text-muted-foreground hover:bg-muted"
+          >
+            {showAll ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showAll ? 'Less' : `More (${hiddenCount})`}
+          </button>
+        )}
         {allowCustom && (
         <button
           type="button"
@@ -138,7 +167,7 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             onChange('')
           }}
           className={cn(
-            'min-h-10 rounded-full border border-dashed px-4 text-sm font-medium transition-colors flex items-center gap-1',
+            'min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1',
             isCustom ? 'bg-muted' : 'text-muted-foreground hover:bg-muted'
           )}
         >
@@ -239,6 +268,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     () => getQuickPicks(transactions ?? []).filter(pick => !hiddenCategories.has(pick.category)),
     [hiddenCategories, transactions]
   )
+  const categoryRank = useMemo(() => byFrequency((transactions ?? []).map(t => t.category)), [transactions])
 
   const [amount, setAmount] = useState(original ? String(recordedAmount(original).amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
@@ -372,7 +402,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       </div>
 
       <div className="space-y-2">
-        <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} />
+        <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} maxVisible={MAX_CATEGORY_CHIPS} rank={categoryRank} />
         {!original && categoryList === null && provider.mode === 'google' && (
           <p className="text-xs text-muted-foreground">
             Categories are sorted alphabetically.{' '}
