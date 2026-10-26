@@ -11,7 +11,9 @@ This document describes the high-level architecture of the Personal Finance Expl
     - If the access token is expired, the backend uses the refresh token to get a new one (`/api/auth/refresh`).
 5.  **Parsing & Normalization**: Raw rows from Google Sheets are parsed into a consistent `Transaction` type in `lib/sheets.ts`. This includes handling various date formats and currency/amount parsing.
 6.  **State Management**: Financial data is managed using **TanStack Query** for caching and background updates. The `DataProvider` context provides this data to the entire component tree.
-7.  **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
+7.  **Writing**: Adding and editing also call the Sheets API from the browser (`lib/sheets.ts`). A new transaction is appended to the `expenses` tab (columns A–E only; the sheet's formulas derive AmountPLN, MonthYear and TransactionID). An edit finds the row by TransactionID, re-reads it to make sure it still matches, and writes only the changed cells. Both caches are then invalidated.
+8.  **Categories**: The optional `categories` tab is read once per session (`useCategories`). It sets the order of category buttons on the Add page and seeds `lib/colors.ts` so each category keeps the same color everywhere.
+9.  **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
 
 ## Tech Stack
 
@@ -35,7 +37,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 ## Storage & Privacy
 
--   **Google Sheets**: All your financial data stays in your own Google Spreadsheet.
+-   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add or edit a transaction, or create the categories tab.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.
