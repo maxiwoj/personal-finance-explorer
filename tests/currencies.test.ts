@@ -3,12 +3,15 @@ import { describe, it } from 'node:test'
 import {
   columnLetter,
   customCurrencyFormula,
+  defaultCurrencySwap,
   findStartDate,
   newCurrencyCells,
   parseCurrencyLayout,
+  resolveDefaultCurrency,
   standardCurrencyFormula,
   validateNewCurrency,
 } from '../lib/currencies.ts'
+import type { Transaction } from '../lib/types.ts'
 
 const START = { year: 2025, month: 11, day: 1 }
 
@@ -157,5 +160,50 @@ describe('validateNewCurrency', () => {
     assert.ok(validateNewCurrency(list, { code: '=A1', multiplier: 1 }))
     assert.ok(validateNewCurrency(list, { code: 'SHARED', multiplier: 0 }))
     assert.ok(validateNewCurrency(list, { code: 'SHARED', multiplier: NaN }))
+  })
+})
+
+describe('defaultCurrencySwap', () => {
+  const list = parseCurrencyLayout(SHEET_ROWS)!
+
+  it('puts the new default in B1 and the old one in the chosen pair', () => {
+    assert.deepEqual(defaultCurrencySwap(list, 'USD'), [
+      { range: 'B1', value: 'USD' },
+      { range: 'F1', value: 'PLN' },
+    ])
+  })
+
+  it('keeps every currency after the swap, with the new default in B1', () => {
+    const swap = defaultCurrencySwap(list, 'EUR')
+    assert.ok(Array.isArray(swap))
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[0][1] = 'EUR'
+    rows[0][3] = 'PLN'
+    const swapped = parseCurrencyLayout(rows)!
+    assert.equal(swapped.defaultCurrency, 'EUR')
+    assert.deepEqual(swapped.currencies.map(c => c.code).sort(), list.currencies.map(c => c.code).sort())
+    // The old default's pair keeps a GOOGLEFINANCE formula reading D1 against $B1
+    assert.match(String(rows[2][2]), /"CURRENCY:" & \$B1 & D1/)
+  })
+
+  it('refuses the current default, multipliers and unknown codes', () => {
+    assert.match(String(defaultCurrencySwap(list, 'PLN')), /already the default/)
+    assert.match(String(defaultCurrencySwap(list, 'JOINED_ACCOUNT')), /multiplier/)
+    assert.match(String(defaultCurrencySwap(list, 'GBP')), /not in the list/)
+  })
+})
+
+describe('resolveDefaultCurrency', () => {
+  const base = { timestamp: new Date(2025, 10, 1), what: 'x', category: 'food', amountOriginal: 10, amountPLN: 10, monthYear: '11_2025', monthName: '', transactionId: '1' }
+
+  it('gives rows without a currency the default one and marks them', () => {
+    const [implicit, explicit] = resolveDefaultCurrency([
+      { ...base, currency: '' },
+      { ...base, currency: 'EUR', transactionId: '2' },
+    ] satisfies Transaction[], 'PLN')
+    assert.equal(implicit.currency, 'PLN')
+    assert.equal(implicit.implicitCurrency, true)
+    assert.equal(explicit.currency, 'EUR')
+    assert.equal(explicit.implicitCurrency, undefined)
   })
 })

@@ -4,6 +4,8 @@ export type Transaction = {
   category: string
   amountOriginal: number
   currency: string
+  // Set when the Currency cell is empty: the row is in the default currency, which currency holds
+  implicitCurrency?: boolean
   amountPLN: number
   monthYear: string
   monthName: string

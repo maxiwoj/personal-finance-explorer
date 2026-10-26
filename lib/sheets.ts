@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import { columnLetter, CURRENCY_LAYOUT_ROWS, newCurrencyCells, parseCurrencyLayout, validateNewCurrency, type CurrencyLayout } from './currencies'
+import { columnLetter, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, newCurrencyCells, parseCurrencyLayout, validateNewCurrency, type CurrencyLayout } from './currencies'
 import { recordedAmount } from './returns'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -123,7 +123,8 @@ function parseRow(row: string[]): Transaction | null {
       what: what.trim(),
       category: category.trim().toLowerCase(),
       amountOriginal: pAmountOriginal,
-      currency: currency?.trim() || 'PLN',
+      // Empty means the default currency, which resolveDefaultCurrency fills in once it is known
+      currency: currency?.trim() ?? '',
       amountPLN: pAmountPLN !== null ? pAmountPLN : pAmountOriginal,
       monthYear: derivedMonthYear,
       monthName: '', // Not used - derive from timestamp when needed
@@ -325,7 +326,7 @@ function matchesTransaction(row: string[], original: Transaction) {
     parsed.what === original.what &&
     parsed.category === original.category &&
     parsed.amountOriginal === recordedAmount(original).amountOriginal &&
-    parsed.currency === original.currency &&
+    (parsed.currency ? parsed.currency === original.currency : !!original.implicitCurrency) &&
     parsed.notes === (original.notes ?? '')
 }
 
@@ -618,5 +619,20 @@ export async function removeCurrency(
   await sheetsRequest(accessToken, `${spreadsheetUrl}/values:batchClear`, {
     method: 'POST',
     body: JSON.stringify({ ranges: [range] }),
+  })
+}
+
+// Every converted amount is recalculated in the new default currency; see defaultCurrencySwap
+export async function changeDefaultCurrency(accessToken: string, spreadsheetId: string, code: string): Promise<void> {
+  const layout = await requireCurrencyLayout(accessToken, spreadsheetId)
+  const swap = defaultCurrencySwap(layout, code)
+  if (typeof swap === 'string') throw new Error(swap)
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: swap.map(({ range, value }) => ({ range: `${SHEETS.CURRENCIES}!${range}`, values: [[asText(value)]] })),
+    }),
   })
 }

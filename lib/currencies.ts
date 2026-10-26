@@ -1,4 +1,4 @@
-import type { CurrencyDefinition, CurrencyList } from './types'
+import type { CurrencyDefinition, CurrencyList, Transaction } from './types'
 
 // The currencyDates tab holds one pair of columns per currency:
 //   row 1: B1 is the default currency; other pairs have the code in their second column and,
@@ -132,4 +132,25 @@ export function validateNewCurrency(list: CurrencyList, input: { code: string; m
   }
 
   return null
+}
+
+// Making another standard currency the default swaps two codes: B1 gets the new default and the
+// chosen pair gets the old one, so the old default keeps a pair whose formula X now fetches its
+// rate against the new default. Overwriting B1 alone would drop the old default from the tab.
+export function defaultCurrencySwap(list: CurrencyList, code: string): { range: string; value: string }[] | string {
+  const target = list.currencies.find(c => c.code === code)
+
+  if (!target) return `${code} is not in the list.`
+  if (target.isDefault) return `${code} is already the default currency.`
+  if (target.kind !== 'standard') return `${code} is a multiplier, not a currency, so it cannot be the default.`
+
+  return [
+    { range: 'B1', value: target.code },
+    { range: `${columnLetter(target.column + 1)}1`, value: list.defaultCurrency },
+  ]
+}
+
+// Rows with an empty Currency cell are in whatever the default currency is
+export function resolveDefaultCurrency(transactions: Transaction[], defaultCurrency: string): Transaction[] {
+  return transactions.map(t => t.currency ? t : { ...t, currency: defaultCurrency, implicitCurrency: true })
 }

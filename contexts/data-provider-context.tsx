@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, fetchFullTransactions, fetchRecentTransactions, removeCurrency, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, changeDefaultCurrency, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, fetchFullTransactions, fetchRecentTransactions, removeCurrency, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
@@ -31,6 +31,8 @@ export interface FinanceDataProvider {
   addCurrency: (input: { code: string; multiplier?: number }) => Promise<void>
   updateCurrencyMultiplier: (currency: CurrencyDefinition, multiplier: number) => Promise<void>
   removeCurrency: (currency: CurrencyDefinition) => Promise<void>
+  // Swaps B1 with a standard currency's code
+  changeDefaultCurrency: (code: string) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -178,6 +180,9 @@ function buildGoogleProvider(
     async removeCurrency(currency) {
       await fetchWithRefresh(accessToken, (token, id) => removeCurrency(token, id, currency), { isWrite: true })
     },
+    async changeDefaultCurrency(code) {
+      await fetchWithRefresh(accessToken, (token, id) => changeDefaultCurrency(token, id, code), { isWrite: true })
+    },
   }
 }
 
@@ -217,6 +222,9 @@ function buildDemoProvider(): FinanceDataProvider {
       throw new Error('Currency management needs a Google spreadsheet.')
     },
     async removeCurrency() {
+      throw new Error('Currency management needs a Google spreadsheet.')
+    },
+    async changeDefaultCurrency() {
       throw new Error('Currency management needs a Google spreadsheet.')
     },
   }
