@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { TransactionForm } from '@/components/transaction-form'
-import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil } from 'lucide-react'
+import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -119,6 +119,15 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               </p>
             </div>
           </div>
+
+          {transaction.notes && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <StickyNote className="h-3 w-3" /> Notes
+              </p>
+              <p className="text-xs whitespace-pre-wrap break-words">{transaction.notes}</p>
+            </div>
+          )}
 
           <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => setIsEditing(true)}>
             <Pencil className="h-3.5 w-3.5" />

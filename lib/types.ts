@@ -8,6 +8,8 @@ export type Transaction = {
   monthYear: string
   monthName: string
   transactionId: string
+  // Free-form note from column I; empty when there is none
+  notes?: string
 }
 
 // A row of the optional categories tab; its order is the order shown when adding
@@ -23,6 +25,8 @@ export type TransactionInput = {
   category: string
   amount: number
   currency: string
+  // Only edits set it; undefined leaves the sheet's note untouched
+  notes?: string
 }
 
 export type CategoryTotal = {

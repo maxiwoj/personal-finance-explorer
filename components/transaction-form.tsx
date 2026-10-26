@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { AlertCircle, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
@@ -22,6 +23,7 @@ interface TransactionFormProps {
 
 const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
 const MAX_TEXT_LENGTH = 200
+const MAX_NOTES_LENGTH = 1000
 const MAX_QUICK_PICKS = 8
 
 function pad(value: number) {
@@ -60,7 +62,7 @@ function getQuickPicks(transactions: Transaction[]): (QuickPick & { count: numbe
     .sort((a, b) => b.count - a.count)
 }
 
-function validate(fields: { what: string; category: string; amount: string; currency: string; timestamp: string }, isEdit: boolean): TransactionInput | string {
+function validate(fields: { what: string; category: string; amount: string; currency: string; timestamp: string; notes: string }, isEdit: boolean): TransactionInput | string {
   const what = fields.what.trim()
   const category = fields.category.trim()
   const currency = fields.currency.trim()
@@ -74,11 +76,14 @@ function validate(fields: { what: string; category: string; amount: string; curr
   if ([what, category, currency].some(value => value.length > MAX_TEXT_LENGTH)) {
     return `Text fields must be at most ${MAX_TEXT_LENGTH} characters.`
   }
+  const notes = fields.notes.trim()
+  if (notes.length > MAX_NOTES_LENGTH) return `Notes must be at most ${MAX_NOTES_LENGTH} characters.`
 
   const timestamp = isEdit ? new Date(fields.timestamp) : new Date()
   if (isNaN(timestamp.getTime())) return 'Enter a valid date and time.'
 
-  return { timestamp, what, category, amount, currency }
+  // Notes are only edited, never entered when adding
+  return isEdit ? { timestamp, what, category, amount, currency, notes } : { timestamp, what, category, amount, currency }
 }
 
 interface ChipPickerProps {
@@ -178,6 +183,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   // null until picked: a new transaction then uses the most common currency
   const [currency, setCurrency] = useState<string | null>(original?.currency ?? null)
   const [timestamp, setTimestamp] = useState(original ? toDateTimeLocal(original.timestamp) : '')
+  const [notes, setNotes] = useState(original?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCreatingList, setIsCreatingList] = useState(false)
@@ -205,7 +211,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-    const result = validate({ what, category, amount, currency: effectiveCurrency, timestamp }, !!original)
+    const result = validate({ what, category, amount, currency: effectiveCurrency, timestamp, notes }, !!original)
 
     if (typeof result === 'string') {
       setError(result)
@@ -286,6 +292,13 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
         <div className="space-y-2">
           <Label htmlFor="transaction-timestamp">Date and time</Label>
           <Input id="transaction-timestamp" type="datetime-local" step="1" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} className="h-11" />
+        </div>
+      )}
+
+      {original && (
+        <div className="space-y-2">
+          <Label htmlFor="transaction-notes">Notes</Label>
+          <Textarea id="transaction-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" className="text-base" />
         </div>
       )}
 

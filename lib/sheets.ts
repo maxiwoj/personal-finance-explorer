@@ -102,8 +102,8 @@ function parseRow(row: string[]): Transaction | null {
   try {
     if (row.length < 7) return null
     
-    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID
-    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId] = row
+    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID, Notes
+    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId, notes] = row
     
     if (!timestamp || !what || !category) return null
     
@@ -125,7 +125,8 @@ function parseRow(row: string[]): Transaction | null {
       amountPLN: pAmountPLN !== null ? pAmountPLN : pAmountOriginal,
       monthYear: derivedMonthYear,
       monthName: '', // Not used - derive from timestamp when needed
-      transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`
+      transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`,
+      notes: notes?.trim() ?? '',
     }
   } catch {
     return null
@@ -137,7 +138,7 @@ export async function fetchSheetData(
   spreadsheetId: string,
   sheetName: string
 ): Promise<Transaction[]> {
-  const range = `${sheetName}!A:H`
+  const range = `${sheetName}!A:I`
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
   
   const response = await fetch(url, {
@@ -278,7 +279,8 @@ function matchesTransaction(row: string[], original: Transaction) {
     parsed.what === original.what &&
     parsed.category === original.category &&
     parsed.amountOriginal === original.amountOriginal &&
-    parsed.currency === original.currency
+    parsed.currency === original.currency &&
+    parsed.notes === (original.notes ?? '')
 }
 
 // The row is located by TransactionID, downloading only that column instead of the whole tab.
@@ -303,7 +305,7 @@ export async function updateTransaction(
   }
 
   const sheetRow = matches[0] + 1
-  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:H${sheetRow}`)}`)
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:I${sheetRow}`)}`)
 
   if (!matchesTransaction(current.values?.[0] ?? [], original)) {
     throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
@@ -319,18 +321,19 @@ export async function updateTransaction(
     }
   }
 
-  const next = toInputRow(input)
+  const next = [...toInputRow(input), asText(input.notes ?? '')]
   const changed = [
     input.timestamp.getTime() !== original.timestamp.getTime(),
     input.what !== original.what,
     input.category.toLowerCase() !== original.category,
     input.amount !== original.amountOriginal,
     input.currency !== original.currency,
+    input.notes !== undefined && input.notes !== (original.notes ?? ''),
   ]
 
   // Only changed cells are written, so untouched cells keep their exact value and formatting
   const data = next.flatMap((value, index) => changed[index]
-    ? [{ range: `${SHEETS.FULL}!${'ABCDE'[index]}${sheetRow}`, values: [[value]] }]
+    ? [{ range: `${SHEETS.FULL}!${'ABCDEI'[index]}${sheetRow}`, values: [[value]] }]
     : [])
 
   if (data.length === 0) return
