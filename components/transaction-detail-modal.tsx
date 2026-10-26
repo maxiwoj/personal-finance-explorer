@@ -1,14 +1,18 @@
 'use client'
 
+import { useState } from 'react'
 import type { Transaction } from '@/lib/types'
 import { getCategoryColor } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Calendar, CreditCard, Tag, FileText, Clock, Hash } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { TransactionForm } from '@/components/transaction-form'
+import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -37,18 +41,30 @@ function formatDate(date: Date): string {
 }
 
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
+  const [isEditing, setIsEditing] = useState(false)
+
   if (!transaction) return null
 
+  const handleClose = () => {
+    setIsEditing(false)
+    onClose()
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-sm p-0 overflow-hidden border-none shadow-2xl">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className={cn(isEditing ? 'sm:max-w-lg max-h-[90vh] overflow-y-auto' : 'sm:max-w-sm overflow-hidden', 'p-0 border-none shadow-2xl')}>
         <DialogHeader className="p-4 pb-2 border-b bg-muted/30">
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-primary" />
-            Transaction Details
+            {isEditing ? 'Edit Transaction' : 'Transaction Details'}
           </DialogTitle>
         </DialogHeader>
-        
+
+        {isEditing ? (
+          <div className="p-4">
+            <TransactionForm original={transaction} onSaved={() => handleClose()} onCancel={() => setIsEditing(false)} />
+          </div>
+        ) : (
         <div className="p-4 space-y-4">
           {/* Main Info: Amount & Description */}
           <div className="text-center space-y-1 pb-2 border-b border-dashed">
@@ -103,7 +119,13 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               </p>
             </div>
           </div>
+
+          <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => setIsEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </Button>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   )

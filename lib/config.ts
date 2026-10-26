@@ -11,6 +11,7 @@ export const GOOGLE_APP_ID = process.env.NEXT_PUBLIC_GOOGLE_APP_ID || ''
 export const SHEETS = {
   RECENT: 'expenses2',  // ~100-200 rows, last 3 months
   FULL: 'expenses',     // Full transaction history
+  CATEGORIES: 'categories', // Optional: category order (column A) and colors (column B)
 }
 
 // Per-file access: only spreadsheets the user picks (or the app creates) are reachable

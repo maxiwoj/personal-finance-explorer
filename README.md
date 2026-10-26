@@ -14,8 +14,8 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 
 ## Why Personal Finance Explorer?
 
-- **Your data stays in your Google Sheet**: There is no database. Transactions are read straight from the Google Sheets API into your browser; the app's server never receives them.
-- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It only reads it, never writes.
+- **Your data stays in your Google Sheet**: There is no database. Transactions are read from and written to the Google Sheets API directly in your browser; the app's server never receives them.
+- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add or edit a transaction, and only the input columns (Timestamp to Currency) of the `expenses` tab.
 - **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out.
 - **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
 - **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).
@@ -33,6 +33,10 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Google Sheets Integration**: Directly syncs with your Google Spreadsheet, selected from your Drive after sign-in. The app can only access the file you select and does not store any of your data on its servers.
 - **Interactive Dashboard**: Get a high-level overview of your spending, income, and net flow with dynamic charts.
 - **Detailed Transaction Explorer**: Search, filter, and drill down into every transaction.
+- **Add Transactions**: A mobile-first Add page (`/add`, or the floating **+** button on phones): amount first, one-tap category and currency buttons, and your frequent descriptions as one-tap picks for the selected category. New rows are appended to the `expenses` tab; the sheet's formulas fill in the derived columns.
+- **Edit Transactions**: Fix the amount, description, category, currency or date from the transaction details. Only the changed cells are written, and the edit is refused if the row changed in the sheet in the meantime.
+- **Fixed Category Order and Colors**: An optional `categories` tab sets the order of the category buttons and each category's color across the app. The Add page can create it from your existing categories.
+- **Quick Add on iPhone**: Open `/add` in Safari, tap **Share → Add to Home Screen**, and turn off **Open as Web App** if shown, so the shortcut shares Safari's sign-in.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.
 
@@ -40,6 +44,9 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 
 ### Transactions Explorer
 ![Transactions Explorer](./docs/images/transactions.png)
+
+### Add Transaction
+<img src="./docs/images/add-transaction.png" alt="Add Transaction" width="320" />
 
 ### Finance Analysis
 #### Categories

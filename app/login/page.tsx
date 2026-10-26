@@ -70,7 +70,7 @@ export default function LoginPage() {
             </Button>
 
             <p className="text-xs text-center text-muted-foreground">
-              Google mode reads your spreadsheet. Demo mode generates sample transactions locally and supports reloading demo data.
+              Google mode reads and updates your spreadsheet. Demo mode generates sample transactions locally and supports reloading demo data.
             </p>
 
             <div className="flex justify-center gap-4 pt-4 border-t">

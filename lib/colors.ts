@@ -1,3 +1,5 @@
+import type { CategoryDefinition } from './types'
+
 // Extended color palette with distinct, well-separated hues
 const COLORS = [
   '#3b82f6', // blue
@@ -21,6 +23,10 @@ const COLORS = [
   '#78716c', // stone
   '#0891b2', // cyan-600
 ]
+
+export function paletteColor(index: number): string {
+  return COLORS[index % COLORS.length]
+}
 
 // Track assigned colors to ensure uniqueness within a session
 const assignedColors = new Map<string, string>()
@@ -137,6 +143,15 @@ export function getCategoryColors(categories: string[]): Record<string, string> 
     colorMap[category] = getCategoryColor(category)
   })
   return colorMap
+}
+
+// Fixes colors from the categories tab: its color column, else the palette by position.
+// Categories missing from the list keep the hash-based assignment.
+export function setCategoryPalette(categories: CategoryDefinition[]): void {
+  assignedColors.clear()
+  categories.forEach(({ name, color }, index) => {
+    assignedColors.set(name.toLowerCase().trim(), color ?? paletteColor(index))
+  })
 }
 
 // Reset assigned colors (useful for testing or when data changes)

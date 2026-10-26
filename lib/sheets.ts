@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import type { Transaction } from './types'
+import type { CategoryDefinition, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
   constructor(message: string, public status: number) {
@@ -50,7 +50,7 @@ function parseTimestamp(timestampStr: string): Date {
   return new Date()
 }
 
-function parseMoney(value: string | undefined): number | null {
+export function parseMoney(value: string | undefined): number | null {
   if (!value) return null
   
   // Clean the string:
@@ -194,4 +194,197 @@ export function describeSpreadsheetAccessError(error: unknown): string | null {
   }
 
   return null
+}
+
+// Only the input columns (Timestamp..Currency) are written; the template's ARRAYFORMULAs
+// derive AmountPLN, MonthYear and TransactionID.
+const INPUT_RANGE_END = 'E'
+
+function pad(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+// DD/MM/YYYY HH:MM:SS, the template's format and the one parseTimestamp tries first
+export function formatSheetTimestamp(date: Date): string {
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// Values are written as USER_ENTERED so dates and numbers keep the sheet's types;
+// a leading apostrophe keeps text like "=x" or "+48..." from turning into a formula
+function asText(value: string) {
+  return /^[=+\-@']/.test(value) ? `'${value}` : value
+}
+
+function toInputRow(input: TransactionInput): (string | number)[] {
+  return [
+    formatSheetTimestamp(input.timestamp),
+    asText(input.what),
+    asText(input.category),
+    input.amount,
+    asText(input.currency),
+  ]
+}
+
+async function sheetsRequest(accessToken: string, url: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    let message = 'Google Sheets request failed'
+
+    try {
+      const error = await response.json()
+      message = error.error?.message || message
+    } catch {
+      // keep fallback message
+    }
+
+    if (response.status === 403 && init.method) {
+      message = 'You need edit access to this spreadsheet to save transactions.'
+    }
+
+    throw new SheetsApiError(message, response.status)
+  }
+
+  return response.json()
+}
+
+export async function appendTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  input: TransactionInput
+): Promise<void> {
+  const range = `${SHEETS.FULL}!A:${INPUT_RANGE_END}`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+
+  await sheetsRequest(accessToken, url, {
+    method: 'POST',
+    body: JSON.stringify({ values: [toInputRow(input)] }),
+  })
+}
+
+function matchesTransaction(row: string[], original: Transaction) {
+  const parsed = parseRow(row)
+  if (!parsed) return false
+
+  return parsed.transactionId === original.transactionId &&
+    parsed.timestamp.getTime() === original.timestamp.getTime() &&
+    parsed.what === original.what &&
+    parsed.category === original.category &&
+    parsed.amountOriginal === original.amountOriginal &&
+    parsed.currency === original.currency
+}
+
+// The row is located by TransactionID, downloading only that column instead of the whole tab.
+// It is then re-read to make sure it still holds what the user edited; otherwise the edit aborts.
+export async function updateTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  original: Transaction,
+  input: TransactionInput
+): Promise<void> {
+  const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
+  const idColumn = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!H:H`)}`)
+  const ids: string[][] = idColumn.values || []
+  const matches = ids.flatMap((row, index) => row[0]?.trim() === original.transactionId ? [index] : [])
+
+  if (matches.length === 0) {
+    throw new Error('This transaction was not found in the spreadsheet. Reload the data and try again.')
+  }
+
+  if (matches.length > 1) {
+    throw new Error('Several rows share this transaction ID. Edit it directly in the spreadsheet.')
+  }
+
+  const sheetRow = matches[0] + 1
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:H${sheetRow}`)}`)
+
+  if (!matchesTransaction(current.values?.[0] ?? [], original)) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+
+  const next = toInputRow(input)
+  const changed = [
+    input.timestamp.getTime() !== original.timestamp.getTime(),
+    input.what !== original.what,
+    input.category.toLowerCase() !== original.category,
+    input.amount !== original.amountOriginal,
+    input.currency !== original.currency,
+  ]
+
+  // Only changed cells are written, so untouched cells keep their exact value and formatting
+  const data = next.flatMap((value, index) => changed[index]
+    ? [{ range: `${SHEETS.FULL}!${'ABCDE'[index]}${sheetRow}`, values: [[value]] }]
+    : [])
+
+  if (data.length === 0) return
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+// null when the spreadsheet has no categories tab, so callers fall back to derived categories
+export async function fetchCategories(accessToken: string, spreadsheetId: string): Promise<CategoryDefinition[] | null> {
+  const range = `${SHEETS.CATEGORIES}!A:B`
+  let data: { values?: string[][] }
+
+  try {
+    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
+  } catch (error) {
+    if (error instanceof SheetsApiError && error.status === 400 && /unable to parse range/i.test(error.message)) {
+      return null
+    }
+    throw error
+  }
+
+  const rows = data.values || []
+  const seen = new Set<string>()
+
+  return rows
+    .filter((row, index) => !(index === 0 && /^categor(y|ies)$/i.test(row[0]?.trim() ?? '')))
+    .map(([name, color]) => ({
+      name: name?.trim().toLowerCase() ?? '',
+      color: color && HEX_COLOR.test(color.trim()) ? color.trim() : null,
+    }))
+    .filter(({ name }) => {
+      if (!name || seen.has(name)) return false
+      seen.add(name)
+      return true
+    })
+}
+
+export async function appendCategory(accessToken: string, spreadsheetId: string, name: string): Promise<void> {
+  const range = `${SHEETS.CATEGORIES}!A:A`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+
+  await sheetsRequest(accessToken, url, {
+    method: 'POST',
+    body: JSON.stringify({ values: [[asText(name)]] }),
+  })
+}
+
+// Creates the categories tab, seeded with the given categories and their current colors
+export async function createCategoriesSheet(accessToken: string, spreadsheetId: string, categories: CategoryDefinition[]): Promise<void> {
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SHEETS.CATEGORIES } } }] }),
+  })
+
+  const range = `${SHEETS.CATEGORIES}!A1`
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      values: [['Category', 'Color'], ...categories.map(({ name, color }) => [asText(name), color ?? ''])],
+    }),
+  })
 }
