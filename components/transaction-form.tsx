@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useCategories, useCategoryListActions, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
+import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
 import { cn } from '@/lib/utils'
@@ -21,7 +22,7 @@ interface TransactionFormProps {
   onCancel?: () => void
 }
 
-const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
+export const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
 const MAX_TEXT_LENGTH = 200
 const MAX_NOTES_LENGTH = 1000
 const MAX_QUICK_PICKS = 8
@@ -177,7 +178,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
 
   const quickPicks = useMemo(() => getQuickPicks(transactions ?? []), [transactions])
 
-  const [amount, setAmount] = useState(original ? String(original.amountOriginal) : '')
+  const [amount, setAmount] = useState(original ? String(recordedAmount(original).amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
   const [category, setCategory] = useState(original?.category ?? '')
   // null until picked: a new transaction then uses the most common currency
@@ -216,6 +217,19 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     if (typeof result === 'string') {
       setError(result)
       return
+    }
+
+    // The purchase must still cover its returns, which are recorded in its currency
+    if (original?.returns) {
+      const returned = Math.round((recordedAmount(original).amountOriginal - original.amountOriginal) * 100) / 100
+      if (result.currency !== original.currency) {
+        setError('The currency cannot change once a return is recorded.')
+        return
+      }
+      if (result.amount < returned) {
+        setError(`The amount cannot be less than what was returned (${returned} ${original.currency}).`)
+        return
+      }
     }
 
     setError(null)

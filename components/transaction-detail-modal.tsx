@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { TransactionForm } from '@/components/transaction-form'
-import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote } from 'lucide-react'
+import { ReturnForm } from '@/components/return-form'
+import { recordedAmount, returnableAmount } from '@/lib/returns'
+import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote, Undo2 } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -40,13 +42,18 @@ function formatDate(date: Date): string {
   })
 }
 
+function formatAmount(value: number) {
+  return value.toLocaleString('pl-PL', { minimumFractionDigits: 2 })
+}
+
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
-  const [isEditing, setIsEditing] = useState(false)
+  const [mode, setMode] = useState<'view' | 'edit' | 'return'>('view')
+  const isEditing = mode !== 'view'
 
   if (!transaction) return null
 
   const handleClose = () => {
-    setIsEditing(false)
+    setMode('view')
     onClose()
   }
 
@@ -56,13 +63,17 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
         <DialogHeader className="p-4 pb-2 border-b bg-muted/30">
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-primary" />
-            {isEditing ? 'Edit Transaction' : 'Transaction Details'}
+            {mode === 'edit' ? 'Edit Transaction' : mode === 'return' ? 'Record Return' : 'Transaction Details'}
           </DialogTitle>
         </DialogHeader>
 
-        {isEditing ? (
+        {mode === 'edit' ? (
           <div className="p-4">
-            <TransactionForm original={transaction} onSaved={() => handleClose()} onCancel={() => setIsEditing(false)} />
+            <TransactionForm original={transaction} onSaved={() => handleClose()} onCancel={() => setMode('view')} />
+          </div>
+        ) : mode === 'return' ? (
+          <div className="p-4">
+            <ReturnForm purchase={transaction} onSaved={() => handleClose()} onCancel={() => setMode('view')} />
           </div>
         ) : (
         <div className="p-4 space-y-4">
@@ -80,7 +91,32 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
                 Original: {transaction.amountOriginal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {transaction.currency}
               </p>
             )}
+            {transaction.returnOf && (
+              <p className="text-xs font-medium text-muted-foreground">
+                Return of a purchase outside the loaded transactions
+              </p>
+            )}
           </div>
+
+          {transaction.returns && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <Undo2 className="h-3 w-3" /> Returns
+              </p>
+              <div className="text-xs space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Purchase</span>
+                  <span className="font-semibold">{formatAmount(recordedAmount(transaction).amountOriginal)} {transaction.currency}</span>
+                </div>
+                {transaction.returns.map(r => (
+                  <div key={r.transactionId} className="flex justify-between text-muted-foreground">
+                    <span>Returned {formatDate(r.timestamp)}</span>
+                    <span className="font-semibold">{formatAmount(r.amountOriginal)} {r.currency}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Details Grid */}
           <div className="grid grid-cols-2 gap-4 pt-1">
@@ -129,10 +165,18 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
             </div>
           )}
 
-          <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => setIsEditing(true)}>
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => setMode('edit')}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+            {returnableAmount(transaction) > 0 && (
+              <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => setMode('return')}>
+                <Undo2 className="h-3.5 w-3.5" />
+                Return
+              </Button>
+            )}
+          </div>
         </div>
         )}
       </DialogContent>

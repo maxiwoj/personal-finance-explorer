@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
+import { linkReturns } from '@/lib/returns'
 import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 
 export type FinanceDataScope = 'recent' | 'full' | 'all'
@@ -12,6 +13,7 @@ export function useRecentTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['recent-transactions', provider.mode, provider.sourceId],
     queryFn: provider.getRecentTransactions,
+    select: linkReturns,
     staleTime: provider.mode === 'demo' ? Infinity : 5 * 60 * 1000,
   })
 }
@@ -22,6 +24,7 @@ export function useFullTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['full-transactions', provider.mode, provider.sourceId],
     queryFn: provider.getFullTransactions,
+    select: linkReturns,
     staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
   })
 }

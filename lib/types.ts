@@ -10,6 +10,12 @@ export type Transaction = {
   transactionId: string
   // Free-form note from column I; empty when there is none
   notes?: string
+  // Column J: on a return, the TransactionID of the purchase it (partly) returns; empty otherwise
+  returnOf?: string
+  // Set by linkReturns on a purchase with returns: amountOriginal and amountPLN are then net of
+  // them, and recorded holds the purchase's own amounts as in the sheet
+  returns?: Transaction[]
+  recorded?: { amountOriginal: number; amountPLN: number }
 }
 
 // A row of the optional categories tab; its order is the order shown when adding
@@ -27,6 +33,8 @@ export type TransactionInput = {
   currency: string
   // Only edits set it; undefined leaves the sheet's note untouched
   notes?: string
+  // Only set when recording a return: the TransactionID of the purchase
+  returnOf?: string
 }
 
 export type CategoryTotal = {
