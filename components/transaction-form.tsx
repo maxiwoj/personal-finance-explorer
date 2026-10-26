@@ -10,12 +10,10 @@ import { cn } from '@/lib/utils'
 import type { Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { AlertCircle, Plus, Search } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
   // Edits this transaction when set, otherwise adds a new one
@@ -98,7 +96,7 @@ interface ChipPickerProps {
   onChange: (value: string) => void
   colorFor?: (value: string) => string
   allowCustom?: boolean
-  // Caps the chips shown; the rest are reachable through a searchable "More" list
+  // Caps the chips shown; "More" reveals the rest
   maxVisible?: number
   // Options most likely to be picked first, deciding which chips are shown when capped
   rank?: string[]
@@ -107,16 +105,17 @@ interface ChipPickerProps {
 // One tap selects an option; "New" reveals a text field for values not used before
 function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
-  const [isMoreOpen, setIsMoreOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   // The top-ranked options plus the selected one, kept in the options' order so chips do not jump around
   const visibleOptions = useMemo(() => {
-    if (maxVisible === undefined || options.length <= maxVisible) return options
+    if (showAll || maxVisible === undefined || options.length <= maxVisible) return options
     const top = new Set([...rank.filter(option => options.includes(option)), ...options].slice(0, maxVisible))
     if (value) top.add(value)
     return options.filter(option => top.has(option))
-  }, [maxVisible, options, rank, value])
+  }, [showAll, maxVisible, options, rank, value])
   const hiddenCount = options.length - visibleOptions.length
+  const canCollapse = showAll && maxVisible !== undefined && options.length > maxVisible
 
   const select = (option: string) => {
     setIsCustom(false)
@@ -138,7 +137,7 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
               aria-checked={selected}
               onClick={() => select(option)}
               className={cn(
-                'min-h-10 rounded-full border px-4 text-sm font-medium transition-colors',
+                'min-h-9 rounded-full border px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors',
                 selected ? 'border-transparent text-white' : 'bg-background hover:bg-muted',
                 selected && !color && 'bg-primary text-primary-foreground'
               )}
@@ -149,39 +148,16 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             </button>
           )
         })}
-        {hiddenCount > 0 && (
-          <Popover open={isMoreOpen} onOpenChange={setIsMoreOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="min-h-10 rounded-full border border-dashed px-4 text-sm font-medium transition-colors flex items-center gap-1 text-muted-foreground hover:bg-muted"
-              >
-                <Search className="h-3.5 w-3.5" />
-                More ({hiddenCount})
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="p-0" align="start">
-              <Command>
-                <CommandInput placeholder={`Search ${label.toLowerCase()}`} />
-                <CommandList>
-                  <CommandEmpty>No match.</CommandEmpty>
-                  {options.map(option => (
-                    <CommandItem
-                      key={option}
-                      value={option}
-                      onSelect={() => {
-                        select(option)
-                        setIsMoreOpen(false)
-                      }}
-                    >
-                      {colorFor && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorFor(option) }} />}
-                      {option}
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+        {(hiddenCount > 0 || canCollapse) && (
+          <button
+            type="button"
+            aria-expanded={showAll}
+            onClick={() => setShowAll(!showAll)}
+            className="min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1 text-muted-foreground hover:bg-muted"
+          >
+            {showAll ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showAll ? 'Less' : `More (${hiddenCount})`}
+          </button>
         )}
         {allowCustom && (
         <button
@@ -191,7 +167,7 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             onChange('')
           }}
           className={cn(
-            'min-h-10 rounded-full border border-dashed px-4 text-sm font-medium transition-colors flex items-center gap-1',
+            'min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1',
             isCustom ? 'bg-muted' : 'text-muted-foreground hover:bg-muted'
           )}
         >
