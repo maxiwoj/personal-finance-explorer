@@ -24,6 +24,8 @@ export type Transaction = {
 export type CategoryDefinition = {
   name: string
   color: string | null
+  // Column C: kept in the list (and its color) but not offered when adding a transaction
+  hidden?: boolean
 }
 
 // A pair of columns in the currencyDates tab. standard: a GOOGLEFINANCE rate against the default

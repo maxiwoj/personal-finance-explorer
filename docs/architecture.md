@@ -13,7 +13,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 6.  **State Management**: Financial data is managed using **TanStack Query** for caching and background updates. The `DataProvider` context provides this data to the entire component tree.
 7.  **Writing**: Adding and editing also call the Sheets API from the browser (`lib/sheets.ts`). A new transaction is appended to the `expenses` tab: the input columns A–E plus a generated TransactionID (H) and, for a return, ReturnOf (J); the sheet's formulas derive AmountPLN and MonthYear. A sheet that still derives TransactionID with a formula gets columns A–E only (see [Stable transaction IDs](./migrations/stable-transaction-ids.md)). An edit finds the row by TransactionID, re-reads it to make sure it still matches, and writes only the changed cells; it refuses to overwrite an amount that is a formula. A delete checks the row the same way and removes it; it is refused for a purchase that still has returns, and for sheets whose IDs are row numbers. Both caches are then invalidated.
 8.  **Returns**: A return is a row with a negative amount whose ReturnOf holds the purchase's TransactionID. `linkReturns` (`lib/returns.ts`) folds returns into their purchase when transactions are read, so analytics see the purchase at its net amount in its own month and category.
-9.  **Categories**: The optional `categories` tab is read once per session (`useCategories`). It sets the order of category buttons on the Add page and seeds `lib/colors.ts` so each category keeps the same color everywhere.
+9.  **Categories**: The optional `categories` tab is read once per session (`useCategories`). It sets the order of category buttons on the Add page (rows marked hidden in column C are left out there) and seeds `lib/colors.ts` so each category keeps the same color everywhere.
 10. **Currencies**: The optional `currencyDates` tab is read once per session (`useCurrencies`, `lib/currencies.ts`). Its B1 is the default currency every amount is shown in; its column pairs are the currencies offered on the Add page. The Currencies page writes new pairs (code, column numbers and a formula generated for the pair's columns), changes a custom currency's multiplier, swaps the default with another currency, and clears unused pairs. Rows with an empty Currency cell are read as the default currency (`resolveDefaultCurrency`). See [Currencies](./currencies.md).
 11. **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
 
@@ -39,7 +39,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 ## Storage & Privacy
 
--   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, create the categories tab, or manage currencies.
+-   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, create or change the categories tab, or manage currencies.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.

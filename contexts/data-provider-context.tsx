@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, changeDefaultCurrency, appendTransaction, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, fetchFullTransactions, fetchRecentTransactions, removeCurrency, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, fetchFullTransactions, fetchRecentTransactions, removeCurrency, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
@@ -25,6 +25,8 @@ export interface FinanceDataProvider {
   getCategories: () => Promise<CategoryDefinition[] | null>
   createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
   addCategory: (name: string) => Promise<void>
+  // Hides or shows a category on the Add page; showing one not in the list adds it
+  setCategoryHidden: (name: string, hidden: boolean) => Promise<void>
   // null when the source has no currencyDates tab (or demo mode)
   getCurrencies: () => Promise<CurrencyList | null>
   // Without a multiplier, a standard currency converted with GOOGLEFINANCE
@@ -168,6 +170,9 @@ function buildGoogleProvider(
     async addCategory(name) {
       await fetchWithRefresh(accessToken, (token, id) => appendCategory(token, id, name), { isWrite: true })
     },
+    async setCategoryHidden(name, hidden) {
+      await fetchWithRefresh(accessToken, (token, id) => setCategoryHidden(token, id, name, hidden), { isWrite: true })
+    },
     async getCurrencies() {
       return fetchWithRefresh(accessToken, fetchCurrencies)
     },
@@ -212,6 +217,9 @@ function buildDemoProvider(): FinanceDataProvider {
       throw new Error('Category lists need a Google spreadsheet.')
     },
     async addCategory() {},
+    async setCategoryHidden() {
+      throw new Error('Category lists need a Google spreadsheet.')
+    },
     async getCurrencies() {
       return null
     },

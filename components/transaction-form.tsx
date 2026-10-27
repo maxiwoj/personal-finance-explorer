@@ -7,13 +7,13 @@ import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
 import { cn } from '@/lib/utils'
-import type { Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { AlertCircle, Plus } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
   // Edits this transaction when set, otherwise adds a new one
@@ -26,6 +26,7 @@ export const AMOUNT_PATTERN = /^[-−]?\d[\d\s.,]*$/
 const MAX_TEXT_LENGTH = 200
 const MAX_NOTES_LENGTH = 1000
 const MAX_QUICK_PICKS = 8
+const MAX_CATEGORY_CHIPS = 8
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -95,17 +96,37 @@ interface ChipPickerProps {
   onChange: (value: string) => void
   colorFor?: (value: string) => string
   allowCustom?: boolean
+  // Caps the chips shown; "More" reveals the rest
+  maxVisible?: number
+  // Options most likely to be picked first, deciding which chips are shown when capped
+  rank?: string[]
 }
 
 // One tap selects an option; "New" reveals a text field for values not used before
-function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true }: ChipPickerProps) {
+function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+
+  // The top-ranked options plus the selected one, kept in the options' order so chips do not jump around
+  const visibleOptions = useMemo(() => {
+    if (showAll || maxVisible === undefined || options.length <= maxVisible) return options
+    const top = new Set([...rank.filter(option => options.includes(option)), ...options].slice(0, maxVisible))
+    if (value) top.add(value)
+    return options.filter(option => top.has(option))
+  }, [showAll, maxVisible, options, rank, value])
+  const hiddenCount = options.length - visibleOptions.length
+  const canCollapse = showAll && maxVisible !== undefined && options.length > maxVisible
+
+  const select = (option: string) => {
+    setIsCustom(false)
+    onChange(option)
+  }
 
   return (
     <div className="space-y-2">
       <Label htmlFor={isCustom ? id : undefined}>{label}</Label>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
-        {options.map(option => {
+        {visibleOptions.map(option => {
           const selected = !isCustom && option === value
           const color = colorFor?.(option)
           return (
@@ -114,12 +135,9 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
               type="button"
               role="radio"
               aria-checked={selected}
-              onClick={() => {
-                setIsCustom(false)
-                onChange(option)
-              }}
+              onClick={() => select(option)}
               className={cn(
-                'min-h-10 rounded-full border px-4 text-sm font-medium transition-colors',
+                'min-h-9 rounded-full border px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors',
                 selected ? 'border-transparent text-white' : 'bg-background hover:bg-muted',
                 selected && !color && 'bg-primary text-primary-foreground'
               )}
@@ -130,6 +148,17 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             </button>
           )
         })}
+        {(hiddenCount > 0 || canCollapse) && (
+          <button
+            type="button"
+            aria-expanded={showAll}
+            onClick={() => setShowAll(!showAll)}
+            className="min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1 text-muted-foreground hover:bg-muted"
+          >
+            {showAll ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showAll ? 'Less' : `More (${hiddenCount})`}
+          </button>
+        )}
         {allowCustom && (
         <button
           type="button"
@@ -138,7 +167,7 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
             onChange('')
           }}
           className={cn(
-            'min-h-10 rounded-full border border-dashed px-4 text-sm font-medium transition-colors flex items-center gap-1',
+            'min-h-9 rounded-full border border-dashed px-3 text-sm sm:min-h-10 sm:px-4 font-medium transition-colors flex items-center gap-1',
             isCustom ? 'bg-muted' : 'text-muted-foreground hover:bg-muted'
           )}
         >
@@ -154,21 +183,80 @@ function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom
   )
 }
 
+interface CategoryManagerProps {
+  categories: CategoryDefinition[]
+  newCategory: string
+  onNewCategoryChange: (value: string) => void
+  onAdd: () => void
+  onToggle: (category: CategoryDefinition) => void
+  onDone: () => void
+  disabled: boolean
+}
+
+// Chooses which categories the Add page offers; hiding never changes existing transactions
+function CategoryManager({ categories, newCategory, onNewCategoryChange, onAdd, onToggle, onDone, disabled }: CategoryManagerProps) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <ul className="space-y-1">
+        {categories.map(c => (
+          <li key={c.name} className="flex items-center justify-between gap-2 text-sm">
+            <span className={cn(c.hidden && 'text-muted-foreground')}>
+              {c.name}{c.hidden && ' (hidden)'}
+            </span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onToggle(c)} disabled={disabled}>
+              {c.hidden ? 'Show' : 'Hide'}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <Input
+          value={newCategory}
+          onChange={(e) => onNewCategoryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            onAdd()
+          }}
+          placeholder="New category"
+          aria-label="New category"
+          autoComplete="off"
+        />
+        <Button type="button" variant="outline" onClick={onAdd} disabled={disabled}>
+          Add
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Hidden categories are only left out when adding; their transactions do not change.
+      </p>
+      <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  )
+}
+
 export function TransactionForm({ original, onSaved, onCancel }: TransactionFormProps) {
   const provider = useFinanceDataProvider()
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
   const { data: currencyList } = useCurrencies()
-  const { createCategoryList, addCategory } = useCategoryListActions()
+  const { createCategoryList, addCategory, setCategoryHidden } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
+
+  // Hidden categories are only left out when adding; editing offers the whole list
+  const hiddenCategories = useMemo(
+    () => new Set(original ? [] : (categoryList ?? []).filter(c => c.hidden).map(c => c.name)),
+    [categoryList, original]
+  )
 
   // The categories tab fixes the order; without it, alphabetical keeps chips in place between visits
   const categories = useMemo(() => {
     const values = categoryList?.length
-      ? categoryList.map(c => c.name)
+      ? categoryList.filter(c => !hiddenCategories.has(c.name)).map(c => c.name)
       : [...new Set((transactions ?? []).map(t => t.category))].sort()
     return original && !values.includes(original.category) ? [...values, original.category] : values
-  }, [categoryList, original, transactions])
+  }, [categoryList, hiddenCategories, original, transactions])
 
   // Only currencies the sheet converts: those in the currencyDates tab, most used first; without
   // that tab, the ones already in transactions, since its formulas may not convert an unknown one
@@ -181,7 +269,11 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     return values.length > 0 ? values : [currencyList?.defaultCurrency ?? 'PLN']
   }, [currencyList, original, transactions])
 
-  const quickPicks = useMemo(() => getQuickPicks(transactions ?? []), [transactions])
+  const quickPicks = useMemo(
+    () => getQuickPicks(transactions ?? []).filter(pick => !hiddenCategories.has(pick.category)),
+    [hiddenCategories, transactions]
+  )
+  const categoryRank = useMemo(() => byFrequency((transactions ?? []).map(t => t.category)), [transactions])
 
   const [amount, setAmount] = useState(original ? String(recordedAmount(original).amountOriginal) : '')
   const [what, setWhat] = useState(original?.what ?? '')
@@ -193,6 +285,9 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCreatingList, setIsCreatingList] = useState(false)
+  const [isManaging, setIsManaging] = useState(false)
+  const [newCategory, setNewCategory] = useState('')
+  const [isUpdatingList, setIsUpdatingList] = useState(false)
 
   const effectiveCurrency = currency ?? currencies[0]
   const normalizedCategory = category.trim().toLowerCase()
@@ -208,11 +303,48 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     try {
       const ordered = byFrequency((transactions ?? []).map(t => t.category))
       await createCategoryList(ordered.map(name => ({ name, color: getCategoryColor(name) })))
+      return true
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create the category list.')
+      return false
     } finally {
       setIsCreatingList(false)
     }
+  }
+
+  // Managing needs the categories tab, so it is created first when missing
+  const handleOpenManager = async () => {
+    if (categoryList === null && !await handleCreateCategoryList()) return
+    setIsManaging(true)
+  }
+
+  // Only the categories tab changes: transactions keep their category whether it is hidden or not
+  const updateCategoryList = async (name: string, hidden: boolean) => {
+    setIsUpdatingList(true)
+    setError(null)
+    try {
+      await setCategoryHidden(name, hidden)
+      if (hidden && normalizedCategory === name) setCategory('')
+      return true
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Failed to update the category list.')
+      return false
+    } finally {
+      setIsUpdatingList(false)
+    }
+  }
+
+  const handleAddCategory = async () => {
+    const name = newCategory.trim().toLowerCase()
+    if (!name) {
+      setError('Enter a category name.')
+      return
+    }
+    if (name.length > MAX_TEXT_LENGTH) {
+      setError(`Text fields must be at most ${MAX_TEXT_LENGTH} characters.`)
+      return
+    }
+    if (await updateCategoryList(name, false)) setNewCategory('')
   }
 
   const handleSubmit = async (event: FormEvent) => {
@@ -242,8 +374,12 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     try {
       await saveTransaction(result, original)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not fatal
-      if (categoryList && !categoryList.some(c => c.name === result.category.toLowerCase())) {
+      const listed = categoryList?.find(c => c.name === result.category.toLowerCase())
+      if (categoryList && !listed) {
         await addCategory(result.category.toLowerCase()).catch(() => undefined)
+      } else if (listed?.hidden && !original) {
+        // Typed in with "New", so it is wanted on the Add page again
+        await setCategoryHidden(listed.name, false).catch(() => undefined)
       }
       onSaved(result)
     } catch (saveError) {
@@ -271,7 +407,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       </div>
 
       <div className="space-y-2">
-        <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} />
+        <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} maxVisible={MAX_CATEGORY_CHIPS} rank={categoryRank} />
         {!original && categoryList === null && provider.mode === 'google' && (
           <p className="text-xs text-muted-foreground">
             Categories are sorted alphabetically.{' '}
@@ -281,6 +417,23 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
             in your spreadsheet to set their order and colors.
           </p>
         )}
+        {!original && provider.mode === 'google' && (isManaging && categoryList ? (
+          <CategoryManager
+            categories={categoryList}
+            newCategory={newCategory}
+            onNewCategoryChange={setNewCategory}
+            onAdd={() => void handleAddCategory()}
+            onToggle={(c) => void updateCategoryList(c.name, !c.hidden)}
+            onDone={() => setIsManaging(false)}
+            disabled={isUpdatingList}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            <button type="button" className="underline underline-offset-2" onClick={() => void handleOpenManager()} disabled={categoryList === undefined || isCreatingList}>
+              Manage categories
+            </button>
+          </p>
+        ))}
       </div>
 
       <div className="space-y-2">
