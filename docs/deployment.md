@@ -69,7 +69,7 @@ Use exact origins: scheme + host (+ port), no trailing slash, no path. You will 
 
 Each user brings their own spreadsheet and selects it in the app after signing in. The app can only access files selected in the picker.
 
-The easiest start is to [make a copy of the template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) (also linked from the app's setup screen). It contains sample transactions: delete them from the `expenses` tab before adding your own. Add transactions from the app's **Add** page (or directly in the sheet).
+The easiest start is to [make a copy of the template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) (also linked from the app's setup screen). It contains sample transactions: delete them from the `expenses` tab before adding your own. Add transactions from the app's **Add** page (or directly in the sheet). The sample dates are kept recent by a daily script on the template; see [Template spreadsheet maintenance](./template-spreadsheet.md).
 
 To build a spreadsheet by hand instead:
 
