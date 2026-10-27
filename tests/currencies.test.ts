@@ -277,9 +277,12 @@ describe('revertStartDate', () => {
 })
 
 describe('rateStatuses', () => {
+  // 45962 is 01/11/2025, START; every pair's first date sits in row 4
+  const FIRST_DATES = [[], [], [], [45962, '', 45962, '', 45962, '', 45962]]
+
   it('reads each formula cell as shown, naming the pair by its code', () => {
-    const displayed = [[], [], ['Date', '', '#N/A', '', 'Loading...', '', 'Date', 'Value'], ['', '', '', '', '', '', '45962']]
-    assert.deepEqual(rateStatuses(SHEET_ROWS, displayed), [
+    const shown = [[], [], ['Date', '', '#N/A', '', 'Loading...', '', 'Date', 'Value'], ['01/11/2025', '', '', '', '', '', '01/11/2025']]
+    assert.deepEqual(rateStatuses(SHEET_ROWS, { shown, serials: FIRST_DATES }, START), [
       { code: 'PLN', status: 'ok' },
       { code: 'EUR', status: 'error' },
       { code: 'USD', status: 'loading' },
@@ -289,8 +292,19 @@ describe('rateStatuses', () => {
 
   it('recognises the errors Sheets shows', () => {
     for (const error of ['#REF!', '#VALUE!', '#ERROR!', '#NAME?', '#DIV/0!']) {
-      assert.equal(rateStatuses(SHEET_ROWS, [[], [], ['', '', error]])[1].status, 'error')
+      assert.equal(rateStatuses(SHEET_ROWS, { shown: [[], [], ['', '', error]], serials: FIRST_DATES }, START)[1].status, 'error')
     }
+  })
+
+  it('fails a pair whose rates start on another day', () => {
+    // GOOGLEFINANCE returned rates only from 02/11/2025 for EUR
+    const serials = [[], [], [], [45962, '', 45963, '', 45962, '', 45962]]
+    assert.deepEqual(rateStatuses(SHEET_ROWS, { shown: [], serials }, START).map(r => r.status), ['ok', 'error', 'ok', 'ok'])
+  })
+
+  it('waits for a pair with no first date yet', () => {
+    const serials = [[], [], [], [45962, '', '', '', 45962, '', 45962]]
+    assert.equal(rateStatuses(SHEET_ROWS, { shown: [], serials }, START)[1].status, 'loading')
   })
 })
 

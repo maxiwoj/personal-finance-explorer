@@ -196,17 +196,24 @@ export function revertStartDate(rows: unknown[][], extendedStart: StartDate, pre
 
 export type RateStatus = { code: string; status: 'ok' | 'loading' | 'error' }
 
-// formulaRows: currencyDates!1:4 with formulas; displayedRows: the same rows with formatted values.
-// A formula that fails shows its error (#N/A, #REF!, ...) in its own cell, the top of its spill;
-// GOOGLEFINANCE shows "Loading..." until its data arrives.
-export function rateStatuses(formulaRows: unknown[][], displayedRows: unknown[][]): RateStatus[] {
-  return currencyFormulas(formulaRows).map(({ rowIndex, column }) => {
+// currencyDates!1:4 read twice: shown with formatted values, serials unformatted with dates as
+// serial numbers
+export type DisplayedCurrencyRows = { shown: unknown[][]; serials: unknown[][] }
+
+// formulaRows: currencyDates!1:4 with formulas. A formula that fails shows its error (#N/A, #REF!,
+// ...) in its own cell, the top of its spill; GOOGLEFINANCE shows "Loading..." until its data
+// arrives. A pair whose first date (row 4) is not start fails too: GOOGLEFINANCE can return only
+// the days it has, so its rates would sit on other days' rows without any error.
+export function rateStatuses(formulaRows: unknown[][], displayed: DisplayedCurrencyRows, start: StartDate): RateStatus[] {
+  return currencyFormulas(formulaRows).map(({ rowIndex, column }): RateStatus => {
     const pair = column - (column % 2)
-    const shown = cellText(displayedRows[rowIndex]?.[column])
-    return {
-      code: cellText(formulaRows[0]?.[pair + 1]) || columnLetter(pair),
-      status: /^#[A-Z0-9/]+[!?]?$/.test(shown) ? 'error' : /^loading/i.test(shown) ? 'loading' : 'ok',
-    }
+    const code = cellText(formulaRows[0]?.[pair + 1]) || columnLetter(pair)
+    const shown = cellText(displayed.shown[rowIndex]?.[column])
+    const firstDate = displayed.serials[3]?.[column]
+
+    if (/^#[A-Z0-9/]+[!?]?$/.test(shown)) return { code, status: 'error' }
+    if (/^loading/i.test(shown) || typeof firstDate !== 'number') return { code, status: 'loading' }
+    return { code, status: compareDates(serialToDate(firstDate), start) === 0 ? 'ok' : 'error' }
   })
 }
 

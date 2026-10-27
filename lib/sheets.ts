@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type ExtendResult, type RatesStart, type StartDate } from './currencies'
+import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { recordedAmount } from './returns'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -529,11 +529,15 @@ async function requireCurrencyRows(accessToken: string, spreadsheetId: string) {
   return rows
 }
 
-// currencyDates!1:4 as shown in the sheet, where a failing formula shows its error
-async function fetchDisplayedCurrencyRows(accessToken: string, spreadsheetId: string): Promise<unknown[][]> {
-  const range = `${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`
-  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
-  return data.values || []
+// currencyDates!1:4 as shown in the sheet, where a failing formula shows its error, and with each
+// pair's first date as a serial number
+async function fetchDisplayedCurrencyRows(accessToken: string, spreadsheetId: string): Promise<DisplayedCurrencyRows> {
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(`${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`)}`
+  const [shown, serials] = await Promise.all([
+    sheetsRequest(accessToken, url),
+    sheetsRequest(accessToken, `${url}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`),
+  ])
+  return { shown: shown.values || [], serials: serials.values || [] }
 }
 
 async function writeCurrencyFormulas(accessToken: string, spreadsheetId: string, updates: { range: string; formula: string }[]) {
@@ -572,11 +576,11 @@ export async function extendRates(accessToken: string, spreadsheetId: string, ne
 
   await writeCurrencyFormulas(accessToken, spreadsheetId, updates)
 
-  const before = rateStatuses(rows, displayedBefore)
+  const before = rateStatuses(rows, displayedBefore, previousStart)
   let problems = newRateProblems(before, [])
   for (const delay of [0, ...RATE_CHECK_DELAYS_MS]) {
     await sleep(delay)
-    problems = newRateProblems(before, rateStatuses(rows, await fetchDisplayedCurrencyRows(accessToken, spreadsheetId)))
+    problems = newRateProblems(before, rateStatuses(rows, await fetchDisplayedCurrencyRows(accessToken, spreadsheetId), newStart))
     if (problems.loading.length === 0) break
   }
 

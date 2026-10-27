@@ -94,7 +94,7 @@ export function ExtendRatesDialog({ ratesStart, open, onOpenChange, onExtended, 
                 <div className="space-y-2">
                   {result.broken.length > 0 && (
                     <p className="font-semibold text-destructive">
-                      {result.broken.join(', ')} {result.broken.length === 1 ? 'shows' : 'show'} an error since the start moved to {newStart}, so no transaction in {result.broken.length === 1 ? 'it' : 'them'} can be converted.
+                      {result.broken.join(', ')} {result.broken.length === 1 ? 'shows an error or has' : 'show an error or have'} no rates from {newStart} since the start moved, so {result.broken.length === 1 ? 'its' : 'their'} transactions are not converted correctly.
                     </p>
                   )}
                   {result.loading.length > 0 && (
