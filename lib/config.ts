@@ -12,6 +12,7 @@ export const SHEETS = {
   RECENT: 'expenses2',  // ~100-200 rows, last 3 months
   FULL: 'expenses',     // Full transaction history
   CATEGORIES: 'categories', // Optional: category order (column A) and colors (column B)
+  CURRENCIES: 'currencyDates', // Optional: default currency (B1) and a column pair of daily rates per currency
 }
 
 // Per-file access: only spreadsheets the user picks (or the app creates) are reachable

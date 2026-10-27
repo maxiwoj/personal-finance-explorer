@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useFullTransactions } from '@/hooks/use-transactions'
+import { useFullTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,7 @@ import { AlertCircle, Search, X } from 'lucide-react'
 const ALL_VALUE = '__all__'
 
 export default function TransactionsPage() {
+  const defaultCurrency = useDefaultCurrency()
   const { data: transactions, isLoading, error } = useFullTransactions()
   const { filters, resetFilters } = useFilters()
   const { selectedMonths, selectedYears, selectedDateRange } = filters
@@ -202,7 +203,7 @@ export default function TransactionsPage() {
           <CardTitle>Results</CardTitle>
           <CardDescription>
             {filteredTransactions.length} transactions totaling{' '}
-            {totalFiltered.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+            {totalFiltered.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
           </CardDescription>
         </CardHeader>
         <CardContent>

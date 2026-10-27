@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, type FormEvent } from 'react'
-import { useCategories, useCategoryListActions, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useCategories, useCategoryListActions, useCurrencies, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
@@ -240,6 +240,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const provider = useFinanceDataProvider()
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
+  const { data: currencyList } = useCurrencies()
   const { createCategoryList, addCategory, setCategoryHidden } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
 
@@ -257,12 +258,16 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     return original && !values.includes(original.category) ? [...values, original.category] : values
   }, [categoryList, hiddenCategories, original, transactions])
 
-  // Only currencies already in the sheet: its formulas may not convert an unknown one to PLN
+  // Only currencies the sheet converts: those in the currencyDates tab, most used first; without
+  // that tab, the ones already in transactions, since its formulas may not convert an unknown one
   const currencies = useMemo(() => {
-    const values = byFrequency((transactions ?? []).map(t => t.currency))
+    const used = byFrequency((transactions ?? []).map(t => t.currency))
+    const values = currencyList
+      ? [...used.filter(code => currencyList.currencies.some(c => c.code === code)), ...currencyList.currencies.map(c => c.code).filter(code => !used.includes(code))]
+      : used
     if (original && !values.includes(original.currency)) return [original.currency, ...values]
-    return values.length > 0 ? values : ['PLN']
-  }, [original, transactions])
+    return values.length > 0 ? values : [currencyList?.defaultCurrency ?? 'PLN']
+  }, [currencyList, original, transactions])
 
   const quickPicks = useMemo(
     () => getQuickPicks(transactions ?? []).filter(pick => !hiddenCategories.has(pick.category)),

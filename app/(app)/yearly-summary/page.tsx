@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PieChart } from '@/components/charts/pie-chart'
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import { TransactionsTable } from '@/components/transactions-table'
-import { useFullTransactions } from '@/hooks/use-transactions'
+import { useFullTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
 import {
   getAvailableYears,
   getYearlyMonthlyBreakdown,
@@ -29,6 +29,7 @@ function getElapsedMonthCount(year: number): number {
 }
 
 export default function YearlySummaryPage() {
+  const defaultCurrency = useDefaultCurrency()
   const { data: transactions, isLoading, error } = useFullTransactions()
 
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
@@ -166,7 +167,7 @@ export default function YearlySummaryPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
             </div>
             <p className="text-xs text-muted-foreground">In {selectedYear}</p>
           </CardContent>
@@ -179,7 +180,7 @@ export default function YearlySummaryPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {avgMonthly.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+              {avgMonthly.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
             </div>
             <p className="text-xs text-muted-foreground">Across {elapsedMonths} month{elapsedMonths === 1 ? '' : 's'}</p>
           </CardContent>
@@ -226,6 +227,7 @@ export default function YearlySummaryPage() {
         </CardHeader>
         <CardContent>
           <StackedBarChart
+            yAxisLabel={defaultCurrency}
             labels={breakdown.map(m => m.label)}
             series={stackedSeries}
             comparisonSeries={showComparisonLine ? {
@@ -250,7 +252,7 @@ export default function YearlySummaryPage() {
               </CardTitle>
               <CardDescription>
                 {selectedMonth
-                  ? `${selectedMonth.total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN across ${selectedMonth.transactions.length} transactions`
+                  ? `${selectedMonth.total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} ${defaultCurrency} across ${selectedMonth.transactions.length} transactions`
                   : 'Click a bar above or pick a month to see the biggest expenses'}
               </CardDescription>
             </div>
@@ -287,6 +289,7 @@ export default function YearlySummaryPage() {
             <div className="grid gap-6 lg:grid-cols-2">
               <div>
                 <PieChart
+                  unit={defaultCurrency}
                   data={selectedMonth.categoryTotals.map(c => ({ name: c.category, value: c.total, color: c.color }))}
                   onSliceClick={(name) => setSelectedCategory(prev => prev === name ? null : name)}
                   height={280}

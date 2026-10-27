@@ -4,6 +4,8 @@ export type Transaction = {
   category: string
   amountOriginal: number
   currency: string
+  // Set when the Currency cell is empty: the row is in the default currency, which currency holds
+  implicitCurrency?: boolean
   amountPLN: number
   monthYear: string
   monthName: string
@@ -24,6 +26,23 @@ export type CategoryDefinition = {
   color: string | null
   // Column C: kept in the list (and its color) but not offered when adding a transaction
   hidden?: boolean
+}
+
+// A pair of columns in the currencyDates tab. standard: a GOOGLEFINANCE rate against the default
+// currency; custom: a fixed multiplier, e.g. 0.5 for a joint account's share
+export type CurrencyDefinition = {
+  code: string
+  // 0-based index of the pair's first column
+  column: number
+  kind: 'standard' | 'custom'
+  multiplier: number | null
+  isDefault: boolean
+}
+
+export type CurrencyList = {
+  // currencyDates!B1: every amount is converted to it
+  defaultCurrency: string
+  currencies: CurrencyDefinition[]
 }
 
 // Fields a user enters when adding or editing a transaction

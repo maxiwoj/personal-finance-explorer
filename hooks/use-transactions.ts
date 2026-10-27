@@ -1,30 +1,40 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
+import { resolveDefaultCurrency } from '@/lib/currencies'
 import { linkReturns } from '@/lib/returns'
-import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
+import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type FinanceDataScope = 'recent' | 'full' | 'all'
 
+// Rows without a currency get the default one before returns are linked to their purchases
+function useTransactionSelect() {
+  const defaultCurrency = useDefaultCurrency()
+  return useCallback((transactions: Transaction[]) => linkReturns(resolveDefaultCurrency(transactions, defaultCurrency)), [defaultCurrency])
+}
+
 export function useRecentTransactions() {
   const provider = useFinanceDataProvider()
+  const select = useTransactionSelect()
 
   return useQuery<Transaction[]>({
     queryKey: ['recent-transactions', provider.mode, provider.sourceId],
     queryFn: provider.getRecentTransactions,
-    select: linkReturns,
+    select,
     staleTime: provider.mode === 'demo' ? Infinity : 5 * 60 * 1000,
   })
 }
 
 export function useFullTransactions() {
   const provider = useFinanceDataProvider()
+  const select = useTransactionSelect()
 
   return useQuery<Transaction[]>({
     queryKey: ['full-transactions', provider.mode, provider.sourceId],
     queryFn: provider.getFullTransactions,
-    select: linkReturns,
+    select,
     staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
   })
 }
@@ -121,6 +131,51 @@ export function useCategoryListActions() {
     setCategoryHidden: async (name: string, hidden: boolean) => {
       await provider.setCategoryHidden(name, hidden)
       await invalidate()
+    },
+  }
+}
+
+export function useCurrencies(enabled = true) {
+  const provider = useFinanceDataProvider()
+
+  return useQuery<CurrencyList | null>({
+    queryKey: ['currencies', provider.mode, provider.sourceId],
+    queryFn: provider.getCurrencies,
+    staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
+    enabled,
+  })
+}
+
+// currencyDates!B1; PLN for sheets without that tab, which the template has always converted to
+export function useDefaultCurrency() {
+  const { data } = useCurrencies()
+  return data?.defaultCurrency ?? 'PLN'
+}
+
+export function useCurrencyActions() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  const afterWrite = useAfterWrite()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['currencies', provider.mode] })
+
+  return {
+    addCurrency: async (input: { code: string; multiplier?: number }) => {
+      await provider.addCurrency(input)
+      await invalidate()
+    },
+    // Converted amounts of past transactions change with the multiplier, so they are reloaded
+    updateCurrencyMultiplier: async (currency: CurrencyDefinition, multiplier: number) => {
+      await provider.updateCurrencyMultiplier(currency, multiplier)
+      await Promise.all([invalidate(), afterWrite()])
+    },
+    removeCurrency: async (currency: CurrencyDefinition) => {
+      await provider.removeCurrency(currency)
+      await invalidate()
+    },
+    // Every converted amount changes currency, so transactions are reloaded
+    changeDefaultCurrency: async (code: string) => {
+      await provider.changeDefaultCurrency(code)
+      await Promise.all([invalidate(), afterWrite()])
     },
   }
 }

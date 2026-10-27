@@ -1,6 +1,7 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
+import { columnLetter, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, newCurrencyCells, parseCurrencyLayout, validateNewCurrency, type CurrencyLayout } from './currencies'
 import { recordedAmount } from './returns'
-import type { CategoryDefinition, Transaction, TransactionInput } from './types'
+import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
   constructor(message: string, public status: number) {
@@ -122,7 +123,8 @@ function parseRow(row: string[]): Transaction | null {
       what: what.trim(),
       category: category.trim().toLowerCase(),
       amountOriginal: pAmountOriginal,
-      currency: currency?.trim() || 'PLN',
+      // Empty means the default currency, which resolveDefaultCurrency fills in once it is known
+      currency: currency?.trim() ?? '',
       amountPLN: pAmountPLN !== null ? pAmountPLN : pAmountOriginal,
       monthYear: derivedMonthYear,
       monthName: '', // Not used - derive from timestamp when needed
@@ -324,7 +326,7 @@ function matchesTransaction(row: string[], original: Transaction) {
     parsed.what === original.what &&
     parsed.category === original.category &&
     parsed.amountOriginal === recordedAmount(original).amountOriginal &&
-    parsed.currency === original.currency &&
+    (parsed.currency ? parsed.currency === original.currency : !!original.implicitCurrency) &&
     parsed.notes === (original.notes ?? '')
 }
 
@@ -422,6 +424,10 @@ export async function deleteTransaction(
   })
 }
 
+function isMissingTab(error: unknown) {
+  return error instanceof SheetsApiError && error.status === 400 && /unable to parse range/i.test(error.message)
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
 // null when the spreadsheet has no categories tab, so callers fall back to derived categories
@@ -432,9 +438,7 @@ export async function fetchCategories(accessToken: string, spreadsheetId: string
   try {
     data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
   } catch (error) {
-    if (error instanceof SheetsApiError && error.status === 400 && /unable to parse range/i.test(error.message)) {
-      return null
-    }
+    if (isMissingTab(error)) return null
     throw error
   }
 
@@ -478,6 +482,162 @@ export async function createCategoriesSheet(accessToken: string, spreadsheetId: 
     method: 'PUT',
     body: JSON.stringify({
       values: [['Category', 'Color', 'Hidden'], ...categories.map(({ name, color }) => [asText(name), color ?? ''])],
+    }),
+  })
+}
+
+async function fetchCurrencyLayout(accessToken: string, spreadsheetId: string): Promise<CurrencyLayout | null> {
+  const range = `${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`
+  let data: { values?: unknown[][] }
+
+  try {
+    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+  } catch (error) {
+    if (isMissingTab(error)) return null
+    throw error
+  }
+
+  return parseCurrencyLayout(data.values || [])
+}
+
+// null when the spreadsheet has no currencyDates tab (or B1 is empty): callers fall back to
+// the currencies found in transactions, converted to PLN
+export async function fetchCurrencies(accessToken: string, spreadsheetId: string): Promise<CurrencyList | null> {
+  const layout = await fetchCurrencyLayout(accessToken, spreadsheetId)
+  return layout && { defaultCurrency: layout.defaultCurrency, currencies: layout.currencies }
+}
+
+async function requireCurrencyLayout(accessToken: string, spreadsheetId: string) {
+  const layout = await fetchCurrencyLayout(accessToken, spreadsheetId)
+  if (!layout) {
+    throw new Error(`The spreadsheet has no "${SHEETS.CURRENCIES}" tab with the default currency in B1.`)
+  }
+  return layout
+}
+
+async function fetchSheetGrid(accessToken: string, spreadsheetId: string, title: string) {
+  const metadata = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties(sheetId,title,gridProperties.columnCount)`)
+  const properties = metadata.sheets?.find((sheet: { properties: { title: string } }) => sheet.properties.title === title)?.properties
+
+  if (!properties) {
+    throw new Error(`The spreadsheet has no "${title}" tab.`)
+  }
+
+  return { sheetId: properties.sheetId as number, columnCount: (properties.gridProperties?.columnCount ?? 0) as number }
+}
+
+// Adds a standard currency (no multiplier) or a custom one in the first pair of columns left
+// empty by a removed currency, else after all existing ones. The pair's whole columns must be
+// empty, so nothing is overwritten.
+export async function addCurrency(
+  accessToken: string,
+  spreadsheetId: string,
+  input: { code: string; multiplier?: number }
+): Promise<void> {
+  const layout = await requireCurrencyLayout(accessToken, spreadsheetId)
+  const invalid = validateNewCurrency(layout, input)
+  if (invalid) throw new Error(invalid)
+  // A new pair needs the start date the others share, or its rates would sit on the wrong rows
+  if (typeof layout.startDate === 'string') throw new Error(layout.startDate)
+
+  const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
+  const first = layout.nextColumn
+  const columns = `${columnLetter(first)}:${columnLetter(first + 1)}`
+  const { sheetId, columnCount } = await fetchSheetGrid(accessToken, spreadsheetId, SHEETS.CURRENCIES)
+
+  if (columnCount < first + 2) {
+    await sheetsRequest(accessToken, `${spreadsheetUrl}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests: [{ appendDimension: { sheetId, dimension: 'COLUMNS', length: first + 2 - columnCount } }] }),
+    })
+  } else {
+    // A formula only spills into empty cells; anything left lower in these columns would break it
+    const existing = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.CURRENCIES}!${columns}`)}`)
+    if ((existing.values || []).some((row: string[]) => row.some(cell => cell !== ''))) {
+      throw new Error(`Columns ${columns} of the "${SHEETS.CURRENCIES}" tab are not empty. Clear them in the spreadsheet first.`)
+    }
+  }
+
+  const cells = newCurrencyCells(first, input, layout.startDate)
+  const range = `${SHEETS.CURRENCIES}!${columnLetter(first)}1:${columnLetter(first + 1)}${cells.length}`
+
+  await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: cells }),
+  })
+}
+
+async function requireCurrency(accessToken: string, spreadsheetId: string, code: string, column: number) {
+  const layout = await requireCurrencyLayout(accessToken, spreadsheetId)
+  const currency = layout.currencies.find(c => c.code === code && c.column === column)
+  if (!currency) {
+    throw new Error('The currencies changed in the spreadsheet. Reload and try again.')
+  }
+  return currency
+}
+
+// Only a custom currency's multiplier can change; it applies to every date, past ones included
+export async function updateCurrencyMultiplier(
+  accessToken: string,
+  spreadsheetId: string,
+  currency: { code: string; column: number },
+  multiplier: number
+): Promise<void> {
+  if (!Number.isFinite(multiplier) || multiplier <= 0) {
+    throw new Error('The multiplier must be a positive number.')
+  }
+
+  const current = await requireCurrency(accessToken, spreadsheetId, currency.code, currency.column)
+  if (current.kind !== 'custom') {
+    throw new Error(`${currency.code} is an exchange rate, not a multiplier.`)
+  }
+
+  const range = `${SHEETS.CURRENCIES}!${columnLetter(currency.column)}1`
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [[multiplier]] }),
+  })
+}
+
+// Clears the currency's cells but keeps its columns: deleting them would shift every later pair
+// away from the column numbers in row 2. Refused for the default currency and for a currency any
+// transaction uses, whose amounts could no longer be converted.
+export async function removeCurrency(
+  accessToken: string,
+  spreadsheetId: string,
+  currency: { code: string; column: number }
+): Promise<void> {
+  const current = await requireCurrency(accessToken, spreadsheetId, currency.code, currency.column)
+  if (current.isDefault) {
+    throw new Error('The default currency cannot be removed.')
+  }
+
+  const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
+  const currencyColumn = await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.FULL}!E:E`)}`)
+  const uses = ((currencyColumn.values || []) as string[][]).filter(row => row[0]?.trim() === currency.code).length
+
+  if (uses > 0) {
+    throw new Error(`${uses} transaction${uses === 1 ? ' uses' : 's use'} ${currency.code}. Change them first.`)
+  }
+
+  const range = `${SHEETS.CURRENCIES}!${columnLetter(currency.column)}1:${columnLetter(currency.column + 1)}${CURRENCY_LAYOUT_ROWS}`
+  await sheetsRequest(accessToken, `${spreadsheetUrl}/values:batchClear`, {
+    method: 'POST',
+    body: JSON.stringify({ ranges: [range] }),
+  })
+}
+
+// Every converted amount is recalculated in the new default currency; see defaultCurrencySwap
+export async function changeDefaultCurrency(accessToken: string, spreadsheetId: string, code: string): Promise<void> {
+  const layout = await requireCurrencyLayout(accessToken, spreadsheetId)
+  const swap = defaultCurrencySwap(layout, code)
+  if (typeof swap === 'string') throw new Error(swap)
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: swap.map(({ range, value }) => ({ range: `${SHEETS.CURRENCIES}!${range}`, values: [[asText(value)]] })),
     }),
   })
 }

@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -92,6 +92,14 @@ export function Nav() {
           <DropdownMenuItem onSelect={() => void changeSpreadsheet()}>
             <FileSpreadsheet className="h-4 w-4" />
             Change spreadsheet
+          </DropdownMenuItem>
+        )}
+        {mode === 'google' && (
+          <DropdownMenuItem asChild>
+            <Link href="/currencies">
+              <Coins className="h-4 w-4" />
+              Currencies
+            </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={signOut}>

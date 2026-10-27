@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useFullTransactions } from '@/hooks/use-transactions'
+import { useFullTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
@@ -16,6 +16,7 @@ import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, Wallet, TrendingUp, Tags } from 'lucide-react'
 
 export default function CategoriesPage() {
+  const defaultCurrency = useDefaultCurrency()
   const { data: transactions, isLoading, error } = useFullTransactions()
   const router = useRouter()
   const { filters } = useFilters()
@@ -85,7 +86,7 @@ export default function CategoriesPage() {
           <h1 className="text-3xl font-bold">Categories</h1>
           <p className="text-muted-foreground">
             {totalSpending > 0 
-              ? `${totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN across ${categoryTotals.length} categories`
+              ? `${totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} ${defaultCurrency} across ${categoryTotals.length} categories`
               : 'No spending in selected period'
             }
           </p>
@@ -106,7 +107,7 @@ export default function CategoriesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
             </div>
             <p className="text-xs text-muted-foreground">
               In selected period
@@ -149,7 +150,7 @@ export default function CategoriesPage() {
         </CardHeader>
         <CardContent>
           {pieData.length > 0 ? (
-            <PieChart data={pieData} onSliceClick={handleCategoryClick} height={400} />
+            <PieChart unit={defaultCurrency} data={pieData} onSliceClick={handleCategoryClick} height={400} />
           ) : (
             <div className="flex items-center justify-center h-[400px] text-muted-foreground">
               No transactions in selected period
@@ -184,7 +185,7 @@ export default function CategoriesPage() {
                       <span className="text-sm text-muted-foreground">{percentage}%</span>
                     </div>
                     <CardDescription className="text-xl font-bold text-foreground">
-                      {category.total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                      {category.total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -195,7 +196,7 @@ export default function CategoriesPage() {
                           {topExpenses.map((expense, i) => (
                             <li key={i} className="flex justify-between text-muted-foreground">
                               <span className="truncate max-w-[60%]">{expense.what}</span>
-                              <span>{expense.total.toLocaleString('pl-PL')} PLN</span>
+                              <span>{expense.total.toLocaleString('pl-PL')} {defaultCurrency}</span>
                             </li>
                           ))}
                         </ul>
