@@ -37,6 +37,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Edit Transactions**: Fix the amount, description, category, currency, date or notes from the transaction details. Only the changed cells are written, and the edit is refused if the row changed in the sheet in the meantime. Transactions can also be deleted; a purchase with returns only once its returns are removed.
 - **Returns**: Record a full or partial return from the transaction details, or remove one to revert it. The purchase keeps its original price and counts at its net amount in its own month. Needs stored transaction IDs; see [Stable transaction IDs](./docs/migrations/stable-transaction-ids.md) for updating an older spreadsheet.
 - **Fixed Category Order and Colors**: An optional `categories` tab sets the order of the category buttons and each category's color across the app. The Add page can create it from your existing categories.
+- **Manage Categories on the Add Page**: **Manage categories** adds categories or hides ones you no longer use from the Add page. Hidden categories stay in the `categories` tab (column C) with their color, still appear when editing, and their transactions do not change.
 - **Quick Add on iPhone**: Open `/add` in Safari, tap **Share → Add to Home Screen**, and turn off **Open as Web App** if shown, so the shortcut shares Safari's sign-in.
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.

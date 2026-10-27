@@ -22,6 +22,8 @@ export type Transaction = {
 export type CategoryDefinition = {
   name: string
   color: string | null
+  // Column C: kept in the list (and its color) but not offered when adding a transaction
+  hidden?: boolean
 }
 
 // Fields a user enters when adding or editing a transaction

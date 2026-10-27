@@ -118,5 +118,9 @@ export function useCategoryListActions() {
       await provider.addCategory(name)
       await invalidate()
     },
+    setCategoryHidden: async (name: string, hidden: boolean) => {
+      await provider.setCategoryHidden(name, hidden)
+      await invalidate()
+    },
   }
 }
