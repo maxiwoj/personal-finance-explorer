@@ -5,9 +5,9 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
-import type { RatesStart, StartDate } from '@/lib/currencies'
+import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
@@ -38,8 +38,11 @@ export interface FinanceDataProvider {
   changeDefaultCurrency: (code: string) => Promise<void>
   // The rates' first day and the earliest transaction's; null without a currencyDates tab
   getRatesStart: () => Promise<RatesStart | null>
-  // Moves the start of every currency formula back to newStart, the earliest transaction's day
-  extendRates: (newStart: StartDate) => Promise<void>
+  // Moves the start of every currency formula back to newStart, the earliest transaction's day,
+  // and reports the currencies Google Finance then has no rates for
+  extendRates: (newStart: StartDate) => Promise<ExtendResult>
+  // Undoes extendRates, while the formulas still start on extendedStart
+  revertRates: (extendedStart: StartDate, previousStart: StartDate) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -197,7 +200,10 @@ function buildGoogleProvider(
       return fetchWithRefresh(accessToken, fetchRatesStart)
     },
     async extendRates(newStart) {
-      await fetchWithRefresh(accessToken, (token, id) => extendRates(token, id, newStart), { isWrite: true })
+      return fetchWithRefresh(accessToken, (token, id) => extendRates(token, id, newStart), { isWrite: true })
+    },
+    async revertRates(extendedStart, previousStart) {
+      await fetchWithRefresh(accessToken, (token, id) => revertRates(token, id, extendedStart, previousStart), { isWrite: true })
     },
   }
 }
@@ -250,6 +256,9 @@ function buildDemoProvider(): FinanceDataProvider {
       return null
     },
     async extendRates() {
+      throw new Error('Currency management needs a Google spreadsheet.')
+    },
+    async revertRates() {
       throw new Error('Currency management needs a Google spreadsheet.')
     },
   }

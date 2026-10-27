@@ -9,8 +9,11 @@ import {
   findEarliestDay,
   findStartDate,
   newCurrencyCells,
+  newRateProblems,
   parseCurrencyLayout,
   parseRatesStart,
+  rateStatuses,
+  revertStartDate,
   resolveDefaultCurrency,
   LAST_LOOKUP_COLUMN,
   standardCurrencyFormula,
@@ -243,6 +246,59 @@ describe('extendStartDate', () => {
 
   it('refuses without formulas', () => {
     assert.match(extendStartDate([['DEFAULT', 'PLN'], [1, 2]], EARLIER) as string, /no currency formulas/)
+  })
+})
+
+describe('revertStartDate', () => {
+  const EARLIER = { year: 2024, month: 3, day: 5 }
+  const extended = () => {
+    const updates = extendStartDate(SHEET_ROWS, EARLIER) as { range: string; formula: string }[]
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[2][0] = updates[0].formula
+    rows[2][2] = updates[1].formula
+    rows[2][4] = updates[2].formula
+    rows[3][6] = updates[3].formula
+    return rows
+  }
+
+  it('restores every formula to the previous start', () => {
+    const updates = revertStartDate(extended(), EARLIER, START)
+    assert.ok(Array.isArray(updates))
+    assert.deepEqual(updates.map(u => u.formula), [FORMULA_X_A3, standardCurrencyFormula(2, START), standardCurrencyFormula(4, START), FORMULA_Y_G4])
+  })
+
+  it('refuses when the start changed since the extension', () => {
+    assert.match(revertStartDate(SHEET_ROWS, EARLIER, START) as string, /now start on 01\/11\/2025/)
+  })
+
+  it('refuses a previous start that is not later', () => {
+    assert.equal(typeof revertStartDate(extended(), EARLIER, { year: 2024, month: 1, day: 1 }), 'string')
+  })
+})
+
+describe('rateStatuses', () => {
+  it('reads each formula cell as shown, naming the pair by its code', () => {
+    const displayed = [[], [], ['Date', '', '#N/A', '', 'Loading...', '', 'Date', 'Value'], ['', '', '', '', '', '', '45962']]
+    assert.deepEqual(rateStatuses(SHEET_ROWS, displayed), [
+      { code: 'PLN', status: 'ok' },
+      { code: 'EUR', status: 'error' },
+      { code: 'USD', status: 'loading' },
+      { code: 'JOINED_ACCOUNT', status: 'ok' },
+    ])
+  })
+
+  it('recognises the errors Sheets shows', () => {
+    for (const error of ['#REF!', '#VALUE!', '#ERROR!', '#NAME?', '#DIV/0!']) {
+      assert.equal(rateStatuses(SHEET_ROWS, [[], [], ['', '', error]])[1].status, 'error')
+    }
+  })
+})
+
+describe('newRateProblems', () => {
+  it('only blames the extension for currencies that did not fail before', () => {
+    const before = [{ code: 'EUR', status: 'error' as const }, { code: 'USD', status: 'ok' as const }, { code: 'CHF', status: 'ok' as const }]
+    const after = [{ code: 'EUR', status: 'error' as const }, { code: 'USD', status: 'error' as const }, { code: 'CHF', status: 'loading' as const }]
+    assert.deepEqual(newRateProblems(before, after), { broken: ['USD'], loading: ['CHF'] })
   })
 })
 

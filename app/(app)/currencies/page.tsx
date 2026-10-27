@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { SHEETS } from '@/lib/config'
-import { canExtendRates, formatDate } from '@/lib/currencies'
+import { canExtendRates, formatDate, type ExtendableRatesStart } from '@/lib/currencies'
 import type { CurrencyDefinition } from '@/lib/types'
 import { AlertCircle } from 'lucide-react'
 
@@ -76,7 +76,8 @@ export default function CurrenciesPage() {
   const { addCurrency, removeCurrency, changeDefaultCurrency } = useCurrencyActions()
   const { data: transactions } = useFullTransactions()
   const { data: ratesStart } = useRatesStart(provider.mode === 'google')
-  const [confirmExtend, setConfirmExtend] = useState(false)
+  // The rates being extended, kept while the dialog is open: ratesStart changes once extended
+  const [extending, setExtending] = useState<ExtendableRatesStart | null>(null)
 
   const [kind, setKind] = useState<Kind>('standard')
   const [code, setCode] = useState('')
@@ -239,14 +240,14 @@ export default function CurrenciesPage() {
               </p>
             )}
             {canExtendRates(ratesStart) ? (
-              <>
-                <Button variant="outline" onClick={() => setConfirmExtend(true)}>
-                  Extend rates to {formatDate(ratesStart.earliest)}
-                </Button>
-                <ExtendRatesDialog ratesStart={ratesStart} open={confirmExtend} onOpenChange={setConfirmExtend} onError={setActionError} />
-              </>
+              <Button variant="outline" onClick={() => setExtending(ratesStart)}>
+                Extend rates to {formatDate(ratesStart.earliest)}
+              </Button>
             ) : (
               <Button variant="outline" disabled>Extend rates</Button>
+            )}
+            {extending && (
+              <ExtendRatesDialog ratesStart={extending} open onOpenChange={(open) => { if (!open) setExtending(null) }} onError={setActionError} />
             )}
           </CardContent>
         </Card>

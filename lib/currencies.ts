@@ -141,7 +141,7 @@ export function findEarliestDay(cells: unknown[][]): StartDate | null {
 function currencyFormulas(rows: unknown[][]) {
   return [2, 3].flatMap(rowIndex => (rows[rowIndex] ?? []).flatMap((cell, column) => {
     const formula = cellText(cell)
-    return formula.startsWith('=') ? [{ range: `${columnLetter(column)}${rowIndex + 1}`, formula }] : []
+    return formula.startsWith('=') ? [{ range: `${columnLetter(column)}${rowIndex + 1}`, rowIndex, column, formula }] : []
   }))
 }
 
@@ -157,25 +157,68 @@ export function parseRatesStart(rows: unknown[][], earliest: StartDate | null): 
   return { start: findStartDate(rows), earliest, formulas: currencyFormulas(rows).length }
 }
 
-// Moves the start of every currency formula back to newStart by rewriting the DATE(...) literals
-// in place, so customised formulas survive and each keeps its separators and spacing. Only ever
-// earlier: a later start gains nothing and would drop rates that existing transactions use.
-export function extendStartDate(rows: unknown[][], newStart: StartDate): { range: string; formula: string }[] | string {
-  const start = findStartDate(rows)
-  if (typeof start === 'string') return start
-
-  const formulas = currencyFormulas(rows)
-  if (formulas.length === 0) return 'There are no currency formulas to extend.'
-  if (compareDates(newStart, start) >= 0) return `The rates already start on ${formatDate(start)}.`
-
+// Every currency formula with its DATE(...) literals set to newStart, rewritten in place so
+// customised formulas survive and each keeps its separators and spacing
+function rewriteStartDate(rows: unknown[][], newStart: StartDate) {
   const { year, month, day } = newStart
-  return formulas.map(({ range, formula }) => ({
+  return currencyFormulas(rows).map(({ range, formula }) => ({
     range,
     formula: formula.replace(
       /(DATE\(\s*)\d{4}(\s*[,;]\s*)\d{1,2}(\s*[,;]\s*)\d{1,2}(\s*\))/gi,
       (_, open, first, second, close) => `${open}${year}${first}${month}${second}${day}${close}`
     ),
   }))
+}
+
+// Moves the start of every currency formula back to newStart. Only ever earlier: a later start
+// gains nothing and would drop rates that existing transactions use.
+export function extendStartDate(rows: unknown[][], newStart: StartDate): { range: string; formula: string }[] | string {
+  const start = findStartDate(rows)
+  if (typeof start === 'string') return start
+  if (currencyFormulas(rows).length === 0) return 'There are no currency formulas to extend.'
+  if (compareDates(newStart, start) >= 0) return `The rates already start on ${formatDate(start)}.`
+
+  return rewriteStartDate(rows, newStart)
+}
+
+// Undoes an extension that Google Finance has no rates for: back to previousStart, but only while
+// every formula still starts on the extended date, so a start changed since is never overwritten
+export function revertStartDate(rows: unknown[][], extendedStart: StartDate, previousStart: StartDate): { range: string; formula: string }[] | string {
+  const start = findStartDate(rows)
+  if (typeof start === 'string') return start
+  if (compareDates(start, extendedStart) !== 0) {
+    return `The rates now start on ${formatDate(start)}, not ${formatDate(extendedStart)}. Change the start in the spreadsheet.`
+  }
+  if (compareDates(previousStart, extendedStart) <= 0) return `${formatDate(previousStart)} is not after ${formatDate(extendedStart)}.`
+
+  return rewriteStartDate(rows, previousStart)
+}
+
+export type RateStatus = { code: string; status: 'ok' | 'loading' | 'error' }
+
+// formulaRows: currencyDates!1:4 with formulas; displayedRows: the same rows with formatted values.
+// A formula that fails shows its error (#N/A, #REF!, ...) in its own cell, the top of its spill;
+// GOOGLEFINANCE shows "Loading..." until its data arrives.
+export function rateStatuses(formulaRows: unknown[][], displayedRows: unknown[][]): RateStatus[] {
+  return currencyFormulas(formulaRows).map(({ rowIndex, column }) => {
+    const pair = column - (column % 2)
+    const shown = cellText(displayedRows[rowIndex]?.[column])
+    return {
+      code: cellText(formulaRows[0]?.[pair + 1]) || columnLetter(pair),
+      status: /^#[A-Z0-9/]+[!?]?$/.test(shown) ? 'error' : /^loading/i.test(shown) ? 'loading' : 'ok',
+    }
+  })
+}
+
+// What extending found once GOOGLEFINANCE answered: the start it replaced, the currencies whose
+// formula fails only since the extension, and those still loading when the app stopped waiting
+export type ExtendResult = { previousStart: StartDate; broken: string[]; loading: string[] }
+
+// A currency that already failed before extending is not blamed on it
+export function newRateProblems(before: RateStatus[], after: RateStatus[]): Pick<ExtendResult, 'broken' | 'loading'> {
+  const failedBefore = new Set(before.filter(r => r.status === 'error').map(r => r.code))
+  const codes = (status: RateStatus['status']) => [...new Set(after.filter(r => r.status === status && !failedBefore.has(r.code)).map(r => r.code))]
+  return { broken: codes('error'), loading: codes('loading') }
 }
 
 // The first pair left empty by a removed currency, else the pair after the last used column

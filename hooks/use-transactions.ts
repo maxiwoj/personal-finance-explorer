@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFinanceDataProvider, type FinanceDataProvider } from '@/contexts/data-provider-context'
-import { resolveDefaultCurrency, type RatesStart, type StartDate } from '@/lib/currencies'
+import { resolveDefaultCurrency, type ExtendResult, type RatesStart, type StartDate } from '@/lib/currencies'
 import { linkReturns } from '@/lib/returns'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
@@ -199,14 +199,22 @@ export function useFetchRatesStart() {
   return () => queryClient.fetchQuery<RatesStart | null>(ratesStartQuery(provider))
 }
 
-export function useExtendRates() {
+// Converted amounts change with the start, so transactions are reloaded after either write
+export function useRatesStartActions() {
   const provider = useFinanceDataProvider()
   const queryClient = useQueryClient()
   const afterWrite = useAfterWrite()
+  const reload = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['currencies', provider.mode] }), afterWrite()])
 
-  // Transactions before the old start get rates, so converted amounts are reloaded
-  return async (newStart: StartDate) => {
-    await provider.extendRates(newStart)
-    await Promise.all([queryClient.invalidateQueries({ queryKey: ['currencies', provider.mode] }), afterWrite()])
+  return {
+    extendRates: async (newStart: StartDate): Promise<ExtendResult> => {
+      const result = await provider.extendRates(newStart)
+      await reload()
+      return result
+    },
+    revertRates: async (extendedStart: StartDate, previousStart: StartDate) => {
+      await provider.revertRates(extendedStart, previousStart)
+      await reload()
+    },
   }
 }
