@@ -27,7 +27,7 @@ Formula Y (shown for G4):
 
 Open **Currencies** from the account menu.
 
-- **Add** writes a new pair into the first pair of columns left empty by a removed currency, else after the last used column (the tab gets more columns if needed): the code, the two column numbers, and formula X or Y with its references pointing at the new columns. The start date is copied from the existing formulas (see below; `DATE(2025, 11, 1)` if none is found). Nothing is added past column ZZ, the last one the expenses formula looks up. A standard code is three capital letters understood by Google Finance; a custom name uses capital letters, digits and underscores. Adding is refused if the target columns are not empty.
+- **Add** writes a new pair into the first pair of columns left empty by a removed currency, else after the last used column (the tab gets more columns if needed): the code, the two column numbers, and formula X or Y with its references pointing at the new columns. The start date is copied from the existing formulas (see [The start date](#the-start-date)). Nothing is added past column ZZ, the last one the expenses formula looks up. A standard code is three capital letters understood by Google Finance; a custom name uses capital letters, digits and underscores. Adding is refused if the target columns are not empty.
 - **Change a multiplier** rewrites the custom currency's first cell. It applies to every date, so past transactions in that currency are converted again.
 - **Remove** clears the pair's first four rows. The columns stay, as an empty gap, so later currencies keep the column numbers in row 2; the next currency added fills the gap. The default currency, and any currency used by a transaction in `expenses`, cannot be removed.
 - **Change the default** swaps two codes: B1 gets the chosen exchange-rate currency and that currency's pair gets the old default, so the old default stays convertible (its formula X now fetches its rate against the new default). Overwriting B1 alone would drop the old default from the tab. A multiplier cannot become the default. Every converted amount is recalculated in the new default, and the app warns about what changes silently:
@@ -47,20 +47,17 @@ The template's `expenses` tab converts each amount with (F1):
 An empty Currency keeps the amount as is (the default currency). Otherwise `HLOOKUP` finds the currency's column number in row 2 and `VLOOKUP` finds the transaction's day in column A, reading the rate from the same row. Two consequences:
 
 - Both ranges must reach the last used column (`ZZ` above; the app adds nothing beyond ZZ).
-- Every pair must start on the same date with one row per day, or rates are read from the wrong day. Use the same start in every formula.
+- Every pair must start on the same date with one row per day, or rates are read from the wrong day. See [The start date](#the-start-date).
 
-## Starting at the earliest transaction
+## The start date
 
-Instead of a fixed `DATE(2025, 11, 1)`, every formula can start at the day of the earliest transaction, so a backdated transaction is always covered. Replace each `DATE(...)` with `INT(MIN(expenses!A:A))` in **every** pair at once (mixed starts misalign the rates). For A3:
+The rate tables start on a date **hardcoded in the spreadsheet**: every currency formula (A3, each standard pair's row-3 formula X, each custom pair's row-4 formula Y) contains it as `DATE(2025, 11, 1)`, four times in formula X and three times in formula Y. A transaction dated before it gets `#N/A` in the expenses tab.
 
-```
-=IF(ISBLANK(B1), "", IF(EXACT($B1, B1), VSTACK({"Date", "Close"}, HSTACK(SEQUENCE(TODAY() - INT(MIN(expenses!A:A)) + 1, 1, INT(MIN(expenses!A:A))), MAKEARRAY(TODAY() - INT(MIN(expenses!A:A)) + 1, 1, LAMBDA(r, c, 1)))), GOOGLEFINANCE("CURRENCY:" & $B1 & B1, "price", INT(MIN(expenses!A:A)), TODAY(), 1)))
-```
+To change it, e.g. to cover older transactions:
 
-For a custom pair in G:H (G4):
+1. In `currencyDates`, open **Edit → Find and replace**, tick **Also search within formulas**, and replace `DATE(2025, 11, 1)` with the new date, e.g. `DATE(2024, 1, 1)`. Do the same for `DATE(2025,11,1)` (formula Y has no spaces). In a spreadsheet whose locale uses semicolons, the formulas read `DATE(2025; 11; 1)`; replace that form instead.
+2. Check that every Date column (A, C, E, ...) starts on the new date in row 4. A pair that still starts on the old date has its rates read from the wrong rows, without any error.
 
-```
-={ARRAYFORMULA(INT(MIN(expenses!A:A)) + SEQUENCE(TODAY() - INT(MIN(expenses!A:A)) + 1, 1, 0)), ARRAYFORMULA(IF(ROW(INDIRECT("A1:A" & TODAY()-INT(MIN(expenses!A:A))+1)), G1))}
-```
+Use a fixed date. A start computed from the transactions (e.g. `MIN(expenses!A:A)`) changes whenever they do and makes GOOGLEFINANCE fetch again; with frequently changing dates it returned no data.
 
-The app recognises `MIN(expenses!A` in the existing formulas and writes new currencies with the same start.
+The app reads the start date from the existing formulas and writes new currencies with the same one (`DATE(2025, 11, 1)` if there are no formulas yet). It refuses to add a currency if the formulas start on different dates, or if a formula has no `DATE(...)` it can read, and names the formula to fix.

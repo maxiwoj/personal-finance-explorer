@@ -537,6 +537,8 @@ export async function addCurrency(
   const layout = await requireCurrencyLayout(accessToken, spreadsheetId)
   const invalid = validateNewCurrency(layout, input)
   if (invalid) throw new Error(invalid)
+  // A new pair needs the start date the others share, or its rates would sit on the wrong rows
+  if (typeof layout.startDate === 'string') throw new Error(layout.startDate)
 
   const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
   const first = layout.nextColumn

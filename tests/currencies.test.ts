@@ -57,15 +57,6 @@ describe('standardCurrencyFormula', () => {
   })
 })
 
-describe('earliest transaction start', () => {
-  it('replaces every DATE in formula X and Y with the earliest transaction day', () => {
-    const x = standardCurrencyFormula(0, 'earliestTransaction')
-    assert.equal(x, FORMULA_X_A3.replaceAll('DATE(2025, 11, 1)', 'INT(MIN(expenses!A:A))'))
-    const y = customCurrencyFormula(6, 'earliestTransaction')
-    assert.equal(y, FORMULA_Y_G4.replaceAll('DATE(2025,11,1)', 'INT(MIN(expenses!A:A))'))
-  })
-})
-
 describe('customCurrencyFormula', () => {
   it('reproduces the template formula in G4', () => {
     assert.equal(customCurrencyFormula(6, START), FORMULA_Y_G4)
@@ -146,13 +137,30 @@ describe('parseCurrencyLayout', () => {
 })
 
 describe('findStartDate', () => {
-  it('recognises formulas starting at the earliest transaction', () => {
-    const rows = [['DEFAULT', 'PLN'], [1, 2], [standardCurrencyFormula(0, 'earliestTransaction')]]
-    assert.equal(findStartDate(rows), 'earliestTransaction')
-  })
 
   it('falls back to the template date without formulas', () => {
     assert.deepEqual(findStartDate([['DEFAULT', 'PLN'], [1, 2]]), START)
+  })
+
+  it('accepts every formula on the same date, whatever its spacing', () => {
+    assert.deepEqual(findStartDate(SHEET_ROWS), START)
+  })
+
+  it('reports formulas that start on different dates', () => {
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[2][4] = standardCurrencyFormula(4, { year: 2024, month: 1, day: 1 })
+    assert.match(String(findStartDate(rows)), /different dates \(01\/11\/2025, 01\/01\/2024\)/)
+  })
+
+  it('reads dates written with semicolons', () => {
+    const rows = [['DEFAULT', 'PLN'], [1, 2], [FORMULA_X_A3.replaceAll('DATE(2025, 11, 1)', 'DATE(2024; 1; 15)')]]
+    assert.deepEqual(findStartDate(rows), { year: 2024, month: 1, day: 15 })
+  })
+
+  it('reports a formula whose start it cannot read', () => {
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[2][2] = String(rows[2][2]).replaceAll('DATE(2025, 11, 1)', '$Z$1')
+    assert.match(String(findStartDate(rows)), /C3 has no DATE/)
   })
 
   it('reads the date of the existing formulas', () => {

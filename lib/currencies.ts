@@ -12,18 +12,17 @@ export const CURRENCY_LAYOUT_ROWS = 4
 // The expenses formula looks up rates in currencyDates!A:ZZ, so no pair may go past ZZ
 export const LAST_LOOKUP_COLUMN = 701
 
-// Where the rate tables start: a fixed date, or the earliest transaction's day, so that a
-// backdated transaction is always covered. Every pair must use the same start: the expenses
-// formula finds a date in column A and reads the rate from the same row in the pair.
-export type StartDate = { year: number; month: number; day: number } | 'earliestTransaction'
+// The first day of the rate tables, a DATE(...) hardcoded in every currency formula. All pairs
+// must share it: the expenses formula finds a date in column A and reads the rate from the
+// same row in the currency's pair.
+export type StartDate = { year: number; month: number; day: number }
 
 // The template's first date, used when no existing formula reveals the sheet's own
 const FALLBACK_START_DATE: StartDate = { year: 2025, month: 11, day: 1 }
 
-const EARLIEST_TRANSACTION_DATE = 'INT(MIN(expenses!A:A))'
-
-// What adding a currency needs besides the list: where the next pair goes and the first date
-export type CurrencyLayout = CurrencyList & { nextColumn: number; startDate: StartDate }
+// What adding a currency needs besides the list: where the next pair goes and the first date.
+// startDate is a message instead when the existing formulas disagree or cannot be read.
+export type CurrencyLayout = CurrencyList & { nextColumn: number; startDate: StartDate | string }
 
 export const STANDARD_CODE = /^[A-Z]{3}$/
 export const CUSTOM_CODE = /^[A-Z][A-Z0-9_]{0,39}$/
@@ -37,9 +36,7 @@ export function columnLetter(index: number): string {
   return letters
 }
 
-function startExpression(start: StartDate, separator: string) {
-  if (start === 'earliestTransaction') return EARLIEST_TRANSACTION_DATE
-  const { year, month, day } = start
+function dateLiteral({ year, month, day }: StartDate, separator: string) {
   return `DATE(${[year, month, day].join(separator)})`
 }
 
@@ -47,14 +44,14 @@ function startExpression(start: StartDate, separator: string) {
 // the default currency itself gets a constant 1. firstColumn is the pair's first column (0-based).
 export function standardCurrencyFormula(firstColumn: number, start: StartDate): string {
   const code = `${columnLetter(firstColumn + 1)}1`
-  const date = startExpression(start, ', ')
+  const date = dateLiteral(start, ', ')
   return `=IF(ISBLANK(${code}), "", IF(EXACT($B1, ${code}), VSTACK({"Date", "Close"}, HSTACK(SEQUENCE(TODAY() - ${date} + 1, 1, ${date}), MAKEARRAY(TODAY() - ${date} + 1, 1, LAMBDA(r, c, 1)))), GOOGLEFINANCE("CURRENCY:" & $B1 & ${code}, "price", ${date}, TODAY(), 1)))`
 }
 
 // Formula Y: the multiplier in the pair's first cell, repeated for every date
 export function customCurrencyFormula(firstColumn: number, start: StartDate): string {
   const multiplier = `${columnLetter(firstColumn)}1`
-  const date = startExpression(start, ',')
+  const date = dateLiteral(start, ',')
   return `={ARRAYFORMULA(${date} + SEQUENCE(TODAY() - ${date} + 1, 1, 0)), ARRAYFORMULA(IF(ROW(INDIRECT("A1:A" & TODAY()-${date}+1)), ${multiplier}))}`
 }
 
@@ -86,20 +83,37 @@ function cellText(value: unknown) {
   return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''
 }
 
-// The start of the existing currency formulas, so new ones cover the same dates
-export function findStartDate(rows: unknown[][]): StartDate {
-  for (const row of rows.slice(2, CURRENCY_LAYOUT_ROWS)) {
-    for (const cell of row ?? []) {
-      const formula = cellText(cell)
+function formatDate({ year, month, day }: StartDate) {
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+}
+
+// The start of the existing currency formulas (row 3, or row 4 for a custom pair), so new ones
+// cover the same dates. A message when they use different dates or one has no DATE(...).
+export function findStartDate(rows: unknown[][]): StartDate | string {
+  const dates = new Map<string, StartDate>()
+
+  for (const rowIndex of [2, 3]) {
+    const row = rows[rowIndex] ?? []
+    for (let column = 0; column < row.length; column++) {
+      const formula = cellText(row[column])
       if (!formula.startsWith('=')) continue
-      if (/MIN\(\s*expenses!A/i.test(formula)) return 'earliestTransaction'
-      const match = formula.match(/DATE\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)/i)
-      if (match) {
-        return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+
+      const matches = [...formula.matchAll(/DATE\(\s*(\d{4})\s*[,;]\s*(\d{1,2})\s*[,;]\s*(\d{1,2})\s*\)/gi)]
+      if (matches.length === 0) {
+        return `The formula in ${columnLetter(column)}${rowIndex + 1} has no DATE(...) start date. Use the same DATE(...) in every currency formula.`
+      }
+      for (const [, year, month, day] of matches) {
+        const date = { year: Number(year), month: Number(month), day: Number(day) }
+        dates.set(formatDate(date), date)
       }
     }
   }
-  return FALLBACK_START_DATE
+
+  if (dates.size > 1) {
+    return `The currency formulas start on different dates (${[...dates.keys()].join(', ')}). Use the same DATE(...) in every currency formula.`
+  }
+
+  return dates.values().next().value ?? FALLBACK_START_DATE
 }
 
 // The first pair left empty by a removed currency, else the pair after the last used column
