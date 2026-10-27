@@ -103,6 +103,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - [Architecture Overview](./docs/architecture.md) - Deep dive into how the app works.
 - [Setup & Deployment](./docs/deployment.md) - Comprehensive guide from Google OAuth to Vercel.
 - [Stable transaction IDs](./docs/migrations/stable-transaction-ids.md) - Updating a spreadsheet for notes and returns.
+- [Template spreadsheet maintenance](./docs/template-spreadsheet.md) - Keeping the template's sample dates recent.
 
 ## 🚀 Quick Deployment
 
