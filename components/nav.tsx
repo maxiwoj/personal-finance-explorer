@@ -94,14 +94,12 @@ export function Nav() {
             Change spreadsheet
           </DropdownMenuItem>
         )}
-        {mode === 'google' && (
-          <DropdownMenuItem asChild>
-            <Link href="/currencies">
-              <Coins className="h-4 w-4" />
-              Currencies
-            </Link>
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem asChild>
+          <Link href="/currencies">
+            <Coins className="h-4 w-4" />
+            Currencies
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={signOut}>
           <LogOut className="h-4 w-4" />
           Sign Out
