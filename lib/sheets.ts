@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import { columnLetter, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, newCurrencyCells, parseCurrencyLayout, validateNewCurrency, type CurrencyLayout } from './currencies'
+import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, formatDate, newCurrencyCells, parseCurrencyLayout, parseRatesStart, validateNewCurrency, type CurrencyLayout, type RatesStart, type StartDate } from './currencies'
 import { recordedAmount } from './returns'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -486,18 +486,66 @@ export async function createCategoriesSheet(accessToken: string, spreadsheetId: 
   })
 }
 
-async function fetchCurrencyLayout(accessToken: string, spreadsheetId: string): Promise<CurrencyLayout | null> {
+// currencyDates!1:4 with formulas; null when the spreadsheet has no currencyDates tab
+async function fetchCurrencyRows(accessToken: string, spreadsheetId: string): Promise<unknown[][] | null> {
   const range = `${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`
-  let data: { values?: unknown[][] }
 
   try {
-    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+    const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+    return data.values || []
   } catch (error) {
     if (isMissingTab(error)) return null
     throw error
   }
+}
 
-  return parseCurrencyLayout(data.values || [])
+async function fetchCurrencyLayout(accessToken: string, spreadsheetId: string): Promise<CurrencyLayout | null> {
+  const rows = await fetchCurrencyRows(accessToken, spreadsheetId)
+  return rows && parseCurrencyLayout(rows)
+}
+
+// Read from the sheet, never from the cache: dates as serial numbers, so the locale does not matter
+async function fetchEarliestDay(accessToken: string, spreadsheetId: string): Promise<StartDate | null> {
+  const range = `${SHEETS.FULL}!A:A`
+  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`)
+  return findEarliestDay(data.values || [])
+}
+
+// null when the spreadsheet has no currencyDates tab (or B1 is empty)
+export async function fetchRatesStart(accessToken: string, spreadsheetId: string): Promise<RatesStart | null> {
+  const [rows, earliest] = await Promise.all([
+    fetchCurrencyRows(accessToken, spreadsheetId),
+    fetchEarliestDay(accessToken, spreadsheetId),
+  ])
+  if (!rows || !parseCurrencyLayout(rows)) return null
+  return parseRatesStart(rows, earliest)
+}
+
+// Moves the rates' start back to the earliest transaction, rewriting every currency formula in
+// one batchUpdate so no pair is left on the old start. newStart is the date the user confirmed;
+// if the earliest transaction changed since, nothing is written.
+export async function extendRates(accessToken: string, spreadsheetId: string, newStart: StartDate): Promise<void> {
+  const [rows, earliest] = await Promise.all([
+    fetchCurrencyRows(accessToken, spreadsheetId),
+    fetchEarliestDay(accessToken, spreadsheetId),
+  ])
+  if (!rows || !parseCurrencyLayout(rows)) {
+    throw new Error(`The spreadsheet has no "${SHEETS.CURRENCIES}" tab with the default currency in B1.`)
+  }
+  if (!earliest || compareDates(earliest, newStart) !== 0) {
+    throw new Error(`The earliest transaction is no longer on ${formatDate(newStart)}. Reload and try again.`)
+  }
+
+  const updates = extendStartDate(rows, newStart)
+  if (typeof updates === 'string') throw new Error(updates)
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: updates.map(({ range, formula }) => ({ range: `${SHEETS.CURRENCIES}!${range}`, values: [[formula]] })),
+    }),
+  })
 }
 
 // null when the spreadsheet has no currencyDates tab (or B1 is empty): callers fall back to

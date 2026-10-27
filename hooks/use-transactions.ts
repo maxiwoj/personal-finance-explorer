@@ -2,8 +2,8 @@
 
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useFinanceDataProvider } from '@/contexts/data-provider-context'
-import { resolveDefaultCurrency } from '@/lib/currencies'
+import { useFinanceDataProvider, type FinanceDataProvider } from '@/contexts/data-provider-context'
+import { resolveDefaultCurrency, type RatesStart, type StartDate } from '@/lib/currencies'
 import { linkReturns } from '@/lib/returns'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
@@ -74,6 +74,8 @@ function useAfterWrite() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['recent-transactions', provider.mode] }),
       queryClient.invalidateQueries({ queryKey: ['full-transactions', provider.mode] }),
+      // A saved or deleted transaction can change the earliest date
+      queryClient.invalidateQueries({ queryKey: ['rates-start', provider.mode] }),
     ])
   }
 }
@@ -177,5 +179,34 @@ export function useCurrencyActions() {
       await provider.changeDefaultCurrency(code)
       await Promise.all([invalidate(), afterWrite()])
     },
+  }
+}
+
+// Not cached beyond the query: the earliest transaction is read from the sheet every time
+function ratesStartQuery(provider: FinanceDataProvider) {
+  return { queryKey: ['rates-start', provider.mode, provider.sourceId], queryFn: provider.getRatesStart }
+}
+
+export function useRatesStart(enabled = true) {
+  const provider = useFinanceDataProvider()
+  return useQuery<RatesStart | null>({ ...ratesStartQuery(provider), enabled })
+}
+
+// Fetches it on demand, e.g. right after a transaction is saved
+export function useFetchRatesStart() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  return () => queryClient.fetchQuery<RatesStart | null>(ratesStartQuery(provider))
+}
+
+export function useExtendRates() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  const afterWrite = useAfterWrite()
+
+  // Transactions before the old start get rates, so converted amounts are reloaded
+  return async (newStart: StartDate) => {
+    await provider.extendRates(newStart)
+    await Promise.all([queryClient.invalidateQueries({ queryKey: ['currencies', provider.mode] }), afterWrite()])
   }
 }

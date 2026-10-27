@@ -53,7 +53,19 @@ An empty Currency keeps the amount as is (the default currency). Otherwise `HLOO
 
 The rate tables start on a date **hardcoded in the spreadsheet**: every currency formula (A3, each standard pair's row-3 formula X, each custom pair's row-4 formula Y) contains it as `DATE(2025, 11, 1)`, four times in formula X and three times in formula Y. A transaction dated before it gets `#N/A` in the expenses tab.
 
-To change it, e.g. to cover older transactions:
+### Extending it from the app
+
+**Currencies** shows `Rates start DD/MM/YYYY · earliest transaction DD/MM/YYYY`. When the earliest transaction is before the start, **Extend rates to <date>** moves the start back to that day. Editing a transaction to a date before the start keeps the save and offers the same action. The app never extends on its own.
+
+- The start only ever moves earlier. Moving it later gains nothing and would drop rates that existing transactions use.
+- The `DATE(...)` literals are replaced inside the existing formulas, keeping their separators (`,` or `;`) and spacing, so customised formulas survive. All formulas are written in one request, so no pair is left on the old start.
+- It is refused when the formulas start on different dates or one has no readable `DATE(...)`, like adding a currency.
+- The earliest date is read from `expenses!A:A` at that moment, not from the app's cache. If it changed since the confirmation was shown, nothing is written.
+- Google Finance may have no rates that far back for some currencies. That currency then shows no rates at all, so move its start back in the spreadsheet.
+
+### Changing it by hand
+
+To change it by hand, e.g. to a date of your choice:
 
 1. In `currencyDates`, open **Edit → Find and replace**, tick **Also search within formulas**, and replace `DATE(2025, 11, 1)` with the new date, e.g. `DATE(2024, 1, 1)`. Do the same for `DATE(2025,11,1)` (formula Y has no spaces). In a spreadsheet whose locale uses semicolons, the formulas read `DATE(2025; 11; 1)`; replace that form instead.
 2. Check that every Date column (A, C, E, ...) starts on the new date in row 4. A pair that still starts on the old date has its rates read from the wrong rows, without any error.

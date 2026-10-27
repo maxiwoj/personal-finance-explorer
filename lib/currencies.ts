@@ -83,7 +83,7 @@ function cellText(value: unknown) {
   return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''
 }
 
-function formatDate({ year, month, day }: StartDate) {
+export function formatDate({ year, month, day }: StartDate) {
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
 }
 
@@ -114,6 +114,68 @@ export function findStartDate(rows: unknown[][]): StartDate | string {
   }
 
   return dates.values().next().value ?? FALLBACK_START_DATE
+}
+
+// What extending the rates needs: the current start (a message when the formulas disagree or
+// cannot be read), the day of the earliest transaction and how many formulas hold the start
+export type RatesStart = { start: StartDate | string; earliest: StartDate | null; formulas: number }
+
+export function compareDates(a: StartDate, b: StartDate) {
+  return a.year - b.year || a.month - b.month || a.day - b.day
+}
+
+// Sheets serial numbers count days from 30/12/1899; the fraction is the time of day
+function serialToDate(serial: number): StartDate {
+  const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86_400_000)
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() }
+}
+
+// cells: expenses!A:A read with UNFORMATTED_VALUE and SERIAL_NUMBER, so dates are numbers and the
+// header is text. Only number cells count: the expenses formula cannot look up a text timestamp.
+export function findEarliestDay(cells: unknown[][]): StartDate | null {
+  const serials = cells.map(row => row?.[0]).filter((value): value is number => typeof value === 'number' && value > 0)
+  return serials.length > 0 ? serialToDate(Math.min(...serials)) : null
+}
+
+// The currency formulas with their A1 cells: row 3, and row 4 for a custom pair
+function currencyFormulas(rows: unknown[][]) {
+  return [2, 3].flatMap(rowIndex => (rows[rowIndex] ?? []).flatMap((cell, column) => {
+    const formula = cellText(cell)
+    return formula.startsWith('=') ? [{ range: `${columnLetter(column)}${rowIndex + 1}`, formula }] : []
+  }))
+}
+
+export type ExtendableRatesStart = RatesStart & { start: StartDate; earliest: StartDate }
+
+// Whether the earliest transaction is before a readable start, so the rates can be extended
+export function canExtendRates(ratesStart: RatesStart | null | undefined): ratesStart is ExtendableRatesStart {
+  return !!ratesStart && typeof ratesStart.start !== 'string' && !!ratesStart.earliest &&
+    compareDates(ratesStart.earliest, ratesStart.start) < 0
+}
+
+export function parseRatesStart(rows: unknown[][], earliest: StartDate | null): RatesStart {
+  return { start: findStartDate(rows), earliest, formulas: currencyFormulas(rows).length }
+}
+
+// Moves the start of every currency formula back to newStart by rewriting the DATE(...) literals
+// in place, so customised formulas survive and each keeps its separators and spacing. Only ever
+// earlier: a later start gains nothing and would drop rates that existing transactions use.
+export function extendStartDate(rows: unknown[][], newStart: StartDate): { range: string; formula: string }[] | string {
+  const start = findStartDate(rows)
+  if (typeof start === 'string') return start
+
+  const formulas = currencyFormulas(rows)
+  if (formulas.length === 0) return 'There are no currency formulas to extend.'
+  if (compareDates(newStart, start) >= 0) return `The rates already start on ${formatDate(start)}.`
+
+  const { year, month, day } = newStart
+  return formulas.map(({ range, formula }) => ({
+    range,
+    formula: formula.replace(
+      /(DATE\(\s*)\d{4}(\s*[,;]\s*)\d{1,2}(\s*[,;]\s*)\d{1,2}(\s*\))/gi,
+      (_, open, first, second, close) => `${open}${year}${first}${month}${second}${day}${close}`
+    ),
+  }))
 }
 
 // The first pair left empty by a removed currency, else the pair after the last used column
