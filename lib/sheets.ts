@@ -1,5 +1,5 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
-import { columnLetter, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, newCurrencyCells, parseCurrencyLayout, validateNewCurrency, type CurrencyLayout } from './currencies'
+import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { recordedAmount } from './returns'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -486,18 +486,115 @@ export async function createCategoriesSheet(accessToken: string, spreadsheetId: 
   })
 }
 
-async function fetchCurrencyLayout(accessToken: string, spreadsheetId: string): Promise<CurrencyLayout | null> {
+// currencyDates!1:4 with formulas; null when the spreadsheet has no currencyDates tab
+async function fetchCurrencyRows(accessToken: string, spreadsheetId: string): Promise<unknown[][] | null> {
   const range = `${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`
-  let data: { values?: unknown[][] }
 
   try {
-    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+    const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+    return data.values || []
   } catch (error) {
     if (isMissingTab(error)) return null
     throw error
   }
+}
 
-  return parseCurrencyLayout(data.values || [])
+async function fetchCurrencyLayout(accessToken: string, spreadsheetId: string): Promise<CurrencyLayout | null> {
+  const rows = await fetchCurrencyRows(accessToken, spreadsheetId)
+  return rows && parseCurrencyLayout(rows)
+}
+
+// Read from the sheet, never from the cache: dates as serial numbers, so the locale does not matter
+async function fetchEarliestDay(accessToken: string, spreadsheetId: string): Promise<StartDate | null> {
+  const range = `${SHEETS.FULL}!A:A`
+  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`)
+  return findEarliestDay(data.values || [])
+}
+
+// null when the spreadsheet has no currencyDates tab (or B1 is empty)
+export async function fetchRatesStart(accessToken: string, spreadsheetId: string): Promise<RatesStart | null> {
+  const [rows, earliest] = await Promise.all([
+    fetchCurrencyRows(accessToken, spreadsheetId),
+    fetchEarliestDay(accessToken, spreadsheetId),
+  ])
+  if (!rows || !parseCurrencyLayout(rows)) return null
+  return parseRatesStart(rows, earliest)
+}
+
+async function requireCurrencyRows(accessToken: string, spreadsheetId: string) {
+  const rows = await fetchCurrencyRows(accessToken, spreadsheetId)
+  if (!rows || !parseCurrencyLayout(rows)) {
+    throw new Error(`The spreadsheet has no "${SHEETS.CURRENCIES}" tab with the default currency in B1.`)
+  }
+  return rows
+}
+
+// currencyDates!1:4 as shown in the sheet, where a failing formula shows its error, and with each
+// pair's first date as a serial number
+async function fetchDisplayedCurrencyRows(accessToken: string, spreadsheetId: string): Promise<DisplayedCurrencyRows> {
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(`${SHEETS.CURRENCIES}!1:${CURRENCY_LAYOUT_ROWS}`)}`
+  const [shown, serials] = await Promise.all([
+    sheetsRequest(accessToken, url),
+    sheetsRequest(accessToken, `${url}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`),
+  ])
+  return { shown: shown.values || [], serials: serials.values || [] }
+}
+
+async function writeCurrencyFormulas(accessToken: string, spreadsheetId: string, updates: { range: string; formula: string }[]) {
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: updates.map(({ range, formula }) => ({ range: `${SHEETS.CURRENCIES}!${range}`, values: [[formula]] })),
+    }),
+  })
+}
+
+// GOOGLEFINANCE fetches its data after the write, showing "Loading..." meanwhile
+const RATE_CHECK_DELAYS_MS = [1000, 2000, 3000, 4000, 5000]
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Moves the rates' start back to the earliest transaction, rewriting every currency formula in
+// one batchUpdate so no pair is left on the old start. newStart is the date the user confirmed;
+// if the earliest transaction changed since, nothing is written. Then waits for GOOGLEFINANCE
+// and reports the currencies it has no rates for that far back, so the user can revert.
+export async function extendRates(accessToken: string, spreadsheetId: string, newStart: StartDate): Promise<ExtendResult> {
+  const [rows, earliest, displayedBefore] = await Promise.all([
+    requireCurrencyRows(accessToken, spreadsheetId),
+    fetchEarliestDay(accessToken, spreadsheetId),
+    fetchDisplayedCurrencyRows(accessToken, spreadsheetId),
+  ])
+  if (!earliest || compareDates(earliest, newStart) !== 0) {
+    throw new Error(`The earliest transaction is no longer on ${formatDate(newStart)}. Reload and try again.`)
+  }
+
+  const updates = extendStartDate(rows, newStart)
+  if (typeof updates === 'string') throw new Error(updates)
+  // extendStartDate succeeded, so the formulas share a readable start
+  const previousStart = findStartDate(rows) as StartDate
+
+  await writeCurrencyFormulas(accessToken, spreadsheetId, updates)
+
+  const before = rateStatuses(rows, displayedBefore, previousStart)
+  let problems = newRateProblems(before, [])
+  for (const delay of [0, ...RATE_CHECK_DELAYS_MS]) {
+    await sleep(delay)
+    problems = newRateProblems(before, rateStatuses(rows, await fetchDisplayedCurrencyRows(accessToken, spreadsheetId), newStart))
+    if (problems.loading.length === 0) break
+  }
+
+  return { previousStart, ...problems }
+}
+
+// Puts the start back to previousStart after an extension Google Finance has no rates for. All
+// pairs move together: the expenses formula needs them to share one start.
+export async function revertRates(accessToken: string, spreadsheetId: string, extendedStart: StartDate, previousStart: StartDate): Promise<void> {
+  const rows = await requireCurrencyRows(accessToken, spreadsheetId)
+  const updates = revertStartDate(rows, extendedStart, previousStart)
+  if (typeof updates === 'string') throw new Error(updates)
+
+  await writeCurrencyFormulas(accessToken, spreadsheetId, updates)
 }
 
 // null when the spreadsheet has no currencyDates tab (or B1 is empty): callers fall back to

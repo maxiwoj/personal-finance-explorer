@@ -2,7 +2,8 @@
 
 import { useMemo, useState, type FormEvent } from 'react'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
-import { useCurrencies, useCurrencyActions, useFullTransactions } from '@/hooks/use-transactions'
+import { useCurrencies, useCurrencyActions, useFullTransactions, useRatesStart } from '@/hooks/use-transactions'
+import { ExtendRatesDialog } from '@/components/extend-rates-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { SHEETS } from '@/lib/config'
+import { canExtendRates, formatDate, type ExtendableRatesStart } from '@/lib/currencies'
 import type { CurrencyDefinition } from '@/lib/types'
 import { AlertCircle } from 'lucide-react'
 
@@ -73,6 +75,9 @@ export default function CurrenciesPage() {
   const { data: currencyList, isLoading, error } = useCurrencies()
   const { addCurrency, removeCurrency, changeDefaultCurrency } = useCurrencyActions()
   const { data: transactions } = useFullTransactions()
+  const { data: ratesStart } = useRatesStart(provider.mode === 'google')
+  // The rates being extended, kept while the dialog is open: ratesStart changes once extended
+  const [extending, setExtending] = useState<ExtendableRatesStart | null>(null)
 
   const [kind, setKind] = useState<Kind>('standard')
   const [code, setCode] = useState('')
@@ -214,6 +219,39 @@ export default function CurrenciesPage() {
           </ul>
         </CardContent>
       </Card>
+
+      {ratesStart && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rate history</CardTitle>
+            <CardDescription>
+              A transaction dated before the rates start cannot be converted. Extending moves the start of every currency formula back to the earliest transaction.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {typeof ratesStart.start === 'string' ? (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{ratesStart.start}</AlertDescription>
+              </Alert>
+            ) : (
+              <p className="text-sm">
+                Rates start {formatDate(ratesStart.start)} · earliest transaction {ratesStart.earliest ? formatDate(ratesStart.earliest) : 'none'}
+              </p>
+            )}
+            {canExtendRates(ratesStart) ? (
+              <Button variant="outline" onClick={() => setExtending(ratesStart)}>
+                Extend rates to {formatDate(ratesStart.earliest)}
+              </Button>
+            ) : (
+              <Button variant="outline" disabled>Extend rates</Button>
+            )}
+            {extending && (
+              <ExtendRatesDialog ratesStart={extending} open onOpenChange={(open) => { if (!open) setExtending(null) }} onError={setActionError} />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

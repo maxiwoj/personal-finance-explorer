@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  canExtendRates,
   columnLetter,
   customCurrencyFormula,
   defaultCurrencySwap,
+  extendStartDate,
+  findEarliestDay,
   findStartDate,
   newCurrencyCells,
+  newRateProblems,
   parseCurrencyLayout,
+  parseRatesStart,
+  rateStatuses,
+  revertStartDate,
   resolveDefaultCurrency,
   LAST_LOOKUP_COLUMN,
   standardCurrencyFormula,
@@ -166,6 +173,146 @@ describe('findStartDate', () => {
   it('reads the date of the existing formulas', () => {
     const rows = [['DEFAULT', 'PLN'], [1, 2], [standardCurrencyFormula(0, { year: 2023, month: 6, day: 30 })]]
     assert.deepEqual(findStartDate(rows), { year: 2023, month: 6, day: 30 })
+  })
+})
+
+describe('findEarliestDay', () => {
+  it('returns the day of the smallest serial number, ignoring the time and the header', () => {
+    // 45658.75 is 01/01/2025 18:00, 45962.5 is 01/11/2025 12:00
+    assert.deepEqual(findEarliestDay([['Timestamp'], [45962.5], [45658.75], [], ['']]), { year: 2025, month: 1, day: 1 })
+  })
+
+  it('returns null without dated rows', () => {
+    assert.equal(findEarliestDay([['Timestamp'], ['not a date']]), null)
+  })
+})
+
+describe('parseRatesStart', () => {
+  it('counts every currency formula', () => {
+    assert.deepEqual(parseRatesStart(SHEET_ROWS, null), { start: START, earliest: null, formulas: 4 })
+  })
+})
+
+describe('canExtendRates', () => {
+  it('needs an earliest transaction before a readable start', () => {
+    assert.equal(canExtendRates({ start: START, earliest: { year: 2025, month: 10, day: 31 }, formulas: 4 }), true)
+    assert.equal(canExtendRates({ start: START, earliest: START, formulas: 4 }), false)
+    assert.equal(canExtendRates({ start: START, earliest: null, formulas: 4 }), false)
+    assert.equal(canExtendRates({ start: 'unreadable', earliest: { year: 2020, month: 1, day: 1 }, formulas: 4 }), false)
+    assert.equal(canExtendRates(null), false)
+  })
+})
+
+describe('extendStartDate', () => {
+  const EARLIER = { year: 2024, month: 3, day: 5 }
+
+  it('rewrites every DATE(...) literal in place, keeping each formula\'s spacing', () => {
+    const updates = extendStartDate(SHEET_ROWS, EARLIER)
+    assert.ok(Array.isArray(updates))
+    assert.deepEqual(updates.map(u => u.range), ['A3', 'C3', 'E3', 'G4'])
+    assert.equal(updates[0].formula, FORMULA_X_A3.replaceAll('DATE(2025, 11, 1)', 'DATE(2024, 3, 5)'))
+    assert.equal(updates[1].formula, standardCurrencyFormula(2, EARLIER))
+    assert.equal(updates[3].formula, FORMULA_Y_G4.replaceAll('DATE(2025,11,1)', 'DATE(2024,3,5)'))
+  })
+
+  it('keeps semicolon separators', () => {
+    const rows = [['DEFAULT', 'PLN'], [1, 2], [FORMULA_X_A3.replaceAll('DATE(2025, 11, 1)', 'DATE(2025; 11; 1)').replaceAll(',', ';')]]
+    const updates = extendStartDate(rows, EARLIER)
+    assert.ok(Array.isArray(updates))
+    assert.equal(updates[0].formula.match(/DATE\(2024; 3; 5\)/g)?.length, 4)
+    assert.ok(!updates[0].formula.includes('2025'))
+  })
+
+  it('keeps customisations around the dates', () => {
+    const custom = FORMULA_Y_G4.replace('G1))}', 'G1 * 2))}')
+    const rows = [SHEET_ROWS[0], SHEET_ROWS[1], SHEET_ROWS[2], ['', '', '', '', '', '', custom]]
+    const updates = extendStartDate(rows, EARLIER)
+    assert.ok(Array.isArray(updates))
+    assert.equal(updates[3].formula, custom.replaceAll('DATE(2025,11,1)', 'DATE(2024,3,5)'))
+  })
+
+  it('only moves the start earlier', () => {
+    assert.match(extendStartDate(SHEET_ROWS, START) as string, /already start on 01\/11\/2025/)
+    assert.equal(typeof extendStartDate(SHEET_ROWS, { year: 2026, month: 1, day: 1 }), 'string')
+  })
+
+  it('refuses when the formulas disagree or one has no DATE(...)', () => {
+    const disagree = [SHEET_ROWS[0], SHEET_ROWS[1], [FORMULA_X_A3, '', standardCurrencyFormula(2, EARLIER)]]
+    assert.match(extendStartDate(disagree, { year: 2020, month: 1, day: 1 }) as string, /different dates/)
+
+    const unreadable = [SHEET_ROWS[0], SHEET_ROWS[1], [FORMULA_X_A3, '', '=GOOGLEFINANCE("CURRENCY:PLNEUR")']]
+    assert.match(extendStartDate(unreadable, { year: 2020, month: 1, day: 1 }) as string, /C3 has no DATE/)
+  })
+
+  it('refuses without formulas', () => {
+    assert.match(extendStartDate([['DEFAULT', 'PLN'], [1, 2]], EARLIER) as string, /no currency formulas/)
+  })
+})
+
+describe('revertStartDate', () => {
+  const EARLIER = { year: 2024, month: 3, day: 5 }
+  const extended = () => {
+    const updates = extendStartDate(SHEET_ROWS, EARLIER) as { range: string; formula: string }[]
+    const rows = SHEET_ROWS.map(row => [...row])
+    rows[2][0] = updates[0].formula
+    rows[2][2] = updates[1].formula
+    rows[2][4] = updates[2].formula
+    rows[3][6] = updates[3].formula
+    return rows
+  }
+
+  it('restores every formula to the previous start', () => {
+    const updates = revertStartDate(extended(), EARLIER, START)
+    assert.ok(Array.isArray(updates))
+    assert.deepEqual(updates.map(u => u.formula), [FORMULA_X_A3, standardCurrencyFormula(2, START), standardCurrencyFormula(4, START), FORMULA_Y_G4])
+  })
+
+  it('refuses when the start changed since the extension', () => {
+    assert.match(revertStartDate(SHEET_ROWS, EARLIER, START) as string, /now start on 01\/11\/2025/)
+  })
+
+  it('refuses a previous start that is not later', () => {
+    assert.equal(typeof revertStartDate(extended(), EARLIER, { year: 2024, month: 1, day: 1 }), 'string')
+  })
+})
+
+describe('rateStatuses', () => {
+  // 45962 is 01/11/2025, START; every pair's first date sits in row 4
+  const FIRST_DATES = [[], [], [], [45962, '', 45962, '', 45962, '', 45962]]
+
+  it('reads each formula cell as shown, naming the pair by its code', () => {
+    const shown = [[], [], ['Date', '', '#N/A', '', 'Loading...', '', 'Date', 'Value'], ['01/11/2025', '', '', '', '', '', '01/11/2025']]
+    assert.deepEqual(rateStatuses(SHEET_ROWS, { shown, serials: FIRST_DATES }, START), [
+      { code: 'PLN', status: 'ok' },
+      { code: 'EUR', status: 'error' },
+      { code: 'USD', status: 'loading' },
+      { code: 'JOINED_ACCOUNT', status: 'ok' },
+    ])
+  })
+
+  it('recognises the errors Sheets shows', () => {
+    for (const error of ['#REF!', '#VALUE!', '#ERROR!', '#NAME?', '#DIV/0!']) {
+      assert.equal(rateStatuses(SHEET_ROWS, { shown: [[], [], ['', '', error]], serials: FIRST_DATES }, START)[1].status, 'error')
+    }
+  })
+
+  it('fails a pair whose rates start on another day', () => {
+    // GOOGLEFINANCE returned rates only from 02/11/2025 for EUR
+    const serials = [[], [], [], [45962, '', 45963, '', 45962, '', 45962]]
+    assert.deepEqual(rateStatuses(SHEET_ROWS, { shown: [], serials }, START).map(r => r.status), ['ok', 'error', 'ok', 'ok'])
+  })
+
+  it('waits for a pair with no first date yet', () => {
+    const serials = [[], [], [], [45962, '', '', '', 45962, '', 45962]]
+    assert.equal(rateStatuses(SHEET_ROWS, { shown: [], serials }, START)[1].status, 'loading')
+  })
+})
+
+describe('newRateProblems', () => {
+  it('only blames the extension for currencies that did not fail before', () => {
+    const before = [{ code: 'EUR', status: 'error' as const }, { code: 'USD', status: 'ok' as const }, { code: 'CHF', status: 'ok' as const }]
+    const after = [{ code: 'EUR', status: 'error' as const }, { code: 'USD', status: 'error' as const }, { code: 'CHF', status: 'loading' as const }]
+    assert.deepEqual(newRateProblems(before, after), { broken: ['USD'], loading: ['CHF'] })
   })
 })
 

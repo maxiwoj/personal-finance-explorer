@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState, type FormEvent } from 'react'
-import { useCategories, useCategoryListActions, useCurrencies, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useCategories, useCategoryListActions, useCurrencies, useFetchRatesStart, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
+import { canExtendRates, compareDates, formatDate, type RatesStart, type StartDate } from '@/lib/currencies'
 import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ExtendRatesDialog } from '@/components/extend-rates-dialog'
 import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
 interface TransactionFormProps {
@@ -30,6 +32,11 @@ const MAX_CATEGORY_CHIPS = 8
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
+}
+
+// The local day, as the sheet stores timestamps in local time
+function dayOf(date: Date): StartDate {
+  return { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate() }
 }
 
 // Value for <input type="datetime-local" step="1">, in local time
@@ -243,6 +250,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const { data: currencyList } = useCurrencies()
   const { createCategoryList, addCategory, setCategoryHidden } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
+  const fetchRatesStart = useFetchRatesStart()
 
   // Hidden categories are only left out when adding; editing offers the whole list
   const hiddenCategories = useMemo(
@@ -288,6 +296,9 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [isManaging, setIsManaging] = useState(false)
   const [newCategory, setNewCategory] = useState('')
   const [isUpdatingList, setIsUpdatingList] = useState(false)
+  // A saved transaction dated before the currency rates start, which cannot be converted yet
+  const [beforeStart, setBeforeStart] = useState<{ result: TransactionInput; ratesStart: RatesStart & { start: StartDate } } | null>(null)
+  const [confirmExtend, setConfirmExtend] = useState(false)
 
   const effectiveCurrency = currency ?? currencies[0]
   const normalizedCategory = category.trim().toLowerCase()
@@ -381,12 +392,54 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
         // Typed in with "New", so it is wanted on the Add page again
         await setCategoryHidden(listed.name, false).catch(() => undefined)
       }
+      // Only an edit can move a date back: adding uses the current time. The save stands either
+      // way, and the rates are never extended without asking.
+      if (original && provider.mode === 'google') {
+        const ratesStart = await fetchRatesStart().catch(() => null)
+        if (ratesStart && typeof ratesStart.start !== 'string' && compareDates(dayOf(result.timestamp), ratesStart.start) < 0) {
+          setBeforeStart({ result, ratesStart: { ...ratesStart, start: ratesStart.start } })
+          return
+        }
+      }
       onSaved(result)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save the transaction.')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  if (beforeStart) {
+    const { result, ratesStart } = beforeStart
+    return (
+      <div className="space-y-5">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Saved. This transaction is dated {formatDate(dayOf(result.timestamp))}, before the currency rates start on {formatDate(ratesStart.start)}, so it cannot be converted until the rates are extended.
+          </AlertDescription>
+        </Alert>
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="lg" onClick={() => onSaved(result)} className="flex-1">
+            Done
+          </Button>
+          {canExtendRates(ratesStart) && (
+            <Button type="button" size="lg" onClick={() => setConfirmExtend(true)} className="flex-1">
+              Extend rates to {formatDate(ratesStart.earliest)}
+            </Button>
+          )}
+        </div>
+        {canExtendRates(ratesStart) && (
+          <ExtendRatesDialog ratesStart={ratesStart} open={confirmExtend} onOpenChange={setConfirmExtend} onExtended={() => onSaved(result)} onError={setError} />
+        )}
+      </div>
+    )
   }
 
   return (
