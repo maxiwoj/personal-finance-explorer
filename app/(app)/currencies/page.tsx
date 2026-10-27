@@ -75,7 +75,7 @@ export default function CurrenciesPage() {
   const { data: currencyList, isLoading, error } = useCurrencies()
   const { addCurrency, removeCurrency, changeDefaultCurrency } = useCurrencyActions()
   const { data: transactions } = useFullTransactions()
-  const { data: ratesStart } = useRatesStart(provider.mode === 'google')
+  const { data: ratesStart } = useRatesStart()
   // The rates being extended, kept while the dialog is open: ratesStart changes once extended
   const [extending, setExtending] = useState<ExtendableRatesStart | null>(null)
 
@@ -146,15 +146,6 @@ export default function CurrenciesPage() {
     }
   }
 
-  if (provider.mode === 'demo') {
-    return (
-      <Alert className="max-w-lg mx-auto mt-10">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>Currency management needs a Google spreadsheet.</AlertDescription>
-      </Alert>
-    )
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -185,6 +176,14 @@ export default function CurrenciesPage() {
 
   return (
     <div className="max-w-xl mx-auto space-y-6">
+      {provider.mode === 'demo' && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Demo mode shows sample currencies with fixed rates. Adding, removing or changing currencies is not available in demo mode. Connect a Google Sheet to unlock the full app.
+          </AlertDescription>
+        </Alert>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Currencies</CardTitle>

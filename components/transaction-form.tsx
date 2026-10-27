@@ -461,7 +461,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
 
       <div className="space-y-2">
         <ChipPicker id="transaction-category" label="Category" options={categories} value={category} onChange={setCategory} colorFor={getCategoryColor} maxVisible={MAX_CATEGORY_CHIPS} rank={categoryRank} />
-        {!original && categoryList === null && provider.mode === 'google' && (
+        {!original && categoryList === null && (
           <p className="text-xs text-muted-foreground">
             Categories are sorted alphabetically.{' '}
             <button type="button" className="underline underline-offset-2" onClick={() => void handleCreateCategoryList()} disabled={isCreatingList}>
@@ -470,7 +470,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
             in your spreadsheet to set their order and colors.
           </p>
         )}
-        {!original && provider.mode === 'google' && (isManaging && categoryList ? (
+        {!original && (isManaging && categoryList ? (
           <CategoryManager
             categories={categoryList}
             newCategory={newCategory}

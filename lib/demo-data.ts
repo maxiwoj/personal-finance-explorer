@@ -1,4 +1,5 @@
-import type { Transaction, TransactionInput } from './types'
+import type { RatesStart } from './currencies'
+import type { CurrencyList, Transaction, TransactionInput } from './types'
 
 const DEMO_DATA_URL = '/demo/demo-transactions.csv'
 const DEMO_STORAGE_KEY = 'pfe_demo_transactions_v2'
@@ -26,6 +27,32 @@ const DEMO_CURRENCY_WEIGHTS: Array<{ currency: DemoCurrency; weight: number }> =
   { currency: 'USD', weight: 0.14 },
   { currency: 'JOINED ACCOUNT', weight: 0.08 },
 ]
+
+// Shown for features that only make sense on a real spreadsheet
+export function demoModeMessage(feature: string) {
+  return `${feature} is not available in demo mode. Connect a Google Sheet to unlock the full app.`
+}
+
+// The demo converts with fixed multipliers, presented like a currencyDates tab: PLN is the
+// default, EUR and USD stand in for exchange-rate currencies, JOINED ACCOUNT is a multiplier
+export function getDemoCurrencies(): CurrencyList {
+  return {
+    defaultCurrency: 'PLN',
+    currencies: (Object.keys(DEMO_CURRENCY_MULTIPLIERS) as DemoCurrency[]).map((code, index) => {
+      const custom = code === 'JOINED ACCOUNT'
+      return { code, column: index * 2, kind: custom ? 'custom' : 'standard', multiplier: custom ? DEMO_CURRENCY_MULTIPLIERS[code] : null, isDefault: code === 'PLN' }
+    }),
+  }
+}
+
+// Fixed multipliers convert any date, so the demo rates always start at the earliest transaction
+export async function getDemoRatesStart(): Promise<RatesStart> {
+  const transactions = await getOrCreateDemoTransactions()
+  const earliest = transactions.reduce<Date | null>((min, t) => (!min || t.timestamp < min ? t.timestamp : min), null)
+  const day = earliest ?? new Date()
+  const start = { year: day.getFullYear(), month: day.getMonth() + 1, day: day.getDate() }
+  return { start, earliest: earliest ? start : null, formulas: Object.keys(DEMO_CURRENCY_MULTIPLIERS).length }
+}
 
 function parseCsvLine(line: string): string[] {
   const result: string[] = []

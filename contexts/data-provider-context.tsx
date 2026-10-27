@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
-import { addDemoTransaction, deleteDemoTransaction, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
+import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
 import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
@@ -28,7 +28,7 @@ export interface FinanceDataProvider {
   addCategory: (name: string) => Promise<void>
   // Hides or shows a category on the Add page; showing one not in the list adds it
   setCategoryHidden: (name: string, hidden: boolean) => Promise<void>
-  // null when the source has no currencyDates tab (or demo mode)
+  // null when the source has no currencyDates tab
   getCurrencies: () => Promise<CurrencyList | null>
   // Without a multiplier, a standard currency converted with GOOGLEFINANCE
   addCurrency: (input: { code: string; multiplier?: number }) => Promise<void>
@@ -231,35 +231,33 @@ function buildDemoProvider(): FinanceDataProvider {
       return null
     },
     async createCategoryList() {
-      throw new Error('Category lists need a Google spreadsheet.')
+      throw new Error(demoModeMessage('Managing categories'))
     },
     async addCategory() {},
     async setCategoryHidden() {
-      throw new Error('Category lists need a Google spreadsheet.')
+      throw new Error(demoModeMessage('Managing categories'))
     },
     async getCurrencies() {
-      return null
+      return getDemoCurrencies()
     },
     async addCurrency() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Adding a currency'))
     },
     async updateCurrencyMultiplier() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Changing a multiplier'))
     },
     async removeCurrency() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Removing a currency'))
     },
     async changeDefaultCurrency() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Changing the default currency'))
     },
-    async getRatesStart() {
-      return null
-    },
+    getRatesStart: getDemoRatesStart,
     async extendRates() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Extending the rates'))
     },
     async revertRates() {
-      throw new Error('Currency management needs a Google spreadsheet.')
+      throw new Error(demoModeMessage('Reverting the rates'))
     },
   }
 }
