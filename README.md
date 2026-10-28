@@ -16,11 +16,27 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 
 - **Your data stays in your Google Sheet**: There is no database. Transactions are read from and written to the Google Sheets API directly in your browser; the app's server never receives them.
 - **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add, edit, return or delete a transaction, and only the input columns (Timestamp to Currency, TransactionID, Notes and ReturnOf) of the `expenses` tab, or when you manage currencies in the `currencyDates` tab.
-- **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out.
+- **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out. Transactions added offline wait in a separate on-device queue until they reach your sheet.
 - **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
 - **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).
 
 > Note: the app includes [Vercel Web Analytics](https://vercel.com/docs/analytics) for page-view stats. It does not receive your spreadsheet data.
+
+## Add Transactions Anywhere, Even Offline
+
+Install the app on your phone's Home Screen and adding an expense takes seconds, whatever the connection:
+
+- **Opens straight on the Add page**, loads without a network after one online visit, and shows your cached data at once while it refreshes in the background. Built for slow connections: the form needs a single Sheets request, and the Google sign-in script loads only when you sign in.
+- **Saving never waits for the network**: a new transaction is stored on the device and the saved screen shows immediately. It is sent to your sheet in the background, right away when online, or as soon as the connection is back (on reconnect or when you reopen the app).
+- **No duplicate rows**: each transaction gets its ID when saved, and a retry first checks the sheet for it.
+- **You always know what's pending**: unsynced transactions are listed and marked in the Transactions view, a bar shows what is waiting or failed (with **Retry**), and signing out warns you before leaving unsynced transactions behind.
+
+<p>
+  <img src="./docs/images/add-offline.png" alt="Saved offline, will sync when online" width="320" />
+  <img src="./docs/images/transactions-unsynced.png" alt="Unsynced transactions in the list" width="320" />
+</p>
+
+Returns, edits and deletes still need a connection, and saving offline needs [stored transaction IDs](./docs/migrations/stable-transaction-ids.md). See [Install as an App](./docs/deployment.md#6-install-as-an-app-offline) for setup and details.
 
 ## Try the Live Demo
 
@@ -39,7 +55,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Fixed Category Order and Colors**: An optional `categories` tab sets the order of the category buttons and each category's color across the app. The Add page can create it from your existing categories.
 - **Currencies**: Amounts are shown in the default currency from `currencyDates!B1`. The **Currencies** page (account menu) adds a currency converted with Google Finance rates, or a fixed multiplier such as 0.5 for a joint account; it also changes a multiplier or the default currency (with a warning about transactions converted silently) and removes unused currencies. See [Currencies](./docs/currencies.md).
 - **Manage Categories on the Add Page**: **Manage categories** adds categories or hides ones you no longer use from the Add page. Hidden categories stay in the `categories` tab (column C) with their color, still appear when editing, and their transactions do not change.
-- **Quick Add on iPhone**: Open `/add` in Safari and tap **Share → Add to Home Screen**. The installed app opens on the Add page, also offline after one online visit, and updates itself; sign in once inside it. See [Install as an App](./docs/deployment.md#6-install-as-an-app-offline).
+- **Quick Add on iPhone, also offline**: Open `/add` in Safari and tap **Share → Add to Home Screen**. The installed app opens on the Add page, also offline after one online visit, and updates itself; sign in once inside it. New transactions are saved on the device at once and synced in the background (see [above](#add-transactions-anywhere-even-offline)). See [Install as an App](./docs/deployment.md#6-install-as-an-app-offline).
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.
 
