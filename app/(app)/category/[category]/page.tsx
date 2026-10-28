@@ -13,7 +13,7 @@ import { TransactionsTable } from '@/components/transactions-table'
 import { MonthYearFilter, filterByMonthYear } from '@/components/month-year-filter'
 import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filter'
 import { filterTransactionsByCategory, getDescriptionTotals, getMonthlyTotals } from '@/lib/analytics'
-import { getCategoryColor } from '@/lib/colors'
+import { getCategoryColor, paletteColor } from '@/lib/colors'
 import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 
@@ -100,13 +100,14 @@ export default function CategoryPage({ params }: CategoryPageProps) {
   const topDescriptions = descriptionTotals.slice(0, 10)
   const otherTotal = descriptionTotals.slice(10).reduce((sum, d) => sum + d.total, 0)
   
+  // Each description gets its own palette color; without one every slice was the chart's default blue
   const pieData = [
     ...topDescriptions.map(d => ({
       name: d.what,
       value: d.total,
     })),
     ...(otherTotal > 0 ? [{ name: 'Other', value: otherTotal }] : [])
-  ]
+  ].map((slice, index) => ({ ...slice, color: paletteColor(index) }))
 
   const lineData = monthlyTotals.map(m => ({
     label: m.monthName,
