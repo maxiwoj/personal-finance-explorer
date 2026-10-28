@@ -1,16 +1,16 @@
 'use client'
 
-import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { SHEETS, TEMPLATE_COPY_URL } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Footer } from '@/components/footer'
+import { useSignOutWithWarning } from '@/components/outbox-status'
 import { AlertCircle, Copy, FileSpreadsheet, LogOut } from 'lucide-react'
 
 export function SpreadsheetSetup() {
-  const { signOut } = useAuth()
+  const { requestSignOut, dialog: signOutDialog } = useSignOutWithWarning()
   const { spreadsheet, accessError, pickerError, isPicking, chooseSpreadsheet } = useSpreadsheet()
   // The deployment default is only reachable by its owner; for everyone else its failure just means "nothing chosen yet"
   const error = pickerError ?? (spreadsheet?.isDefault ? null : accessError)
@@ -58,7 +58,7 @@ export function SpreadsheetSetup() {
             </Button>
 
             <div className="flex justify-center pt-4 border-t">
-              <Button variant="ghost" size="sm" onClick={signOut} className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={requestSignOut} className="flex items-center gap-2">
                 <LogOut className="h-4 w-4" />
                 Sign Out
               </Button>
@@ -67,6 +67,7 @@ export function SpreadsheetSetup() {
         </Card>
       </div>
       <Footer />
+      {signOutDialog}
     </div>
   )
 }

@@ -80,6 +80,18 @@ export async function removeOutboxEntry(id: string): Promise<void> {
   notifyChanged()
 }
 
+// Sends failed entries again on the next sync; attempts are kept, so one that may have been sent
+// is checked for in the sheet first
+export async function retryOutboxEntries(ids: string[]): Promise<void> {
+  const db = await getDB()
+  for (const id of ids) {
+    const entry = await db.get(STORE, id)
+    if (entry?.status === 'failed') await db.put(STORE, { ...entry, status: 'pending', lastError: null })
+  }
+  notifyChanged()
+  requestOutboxSync()
+}
+
 let persistRequested = false
 
 // Asks once per session to keep the queue when the browser clears storage under pressure

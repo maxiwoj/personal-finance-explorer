@@ -25,7 +25,9 @@ import { useDeleteTransaction, useDefaultCurrency } from '@/hooks/use-transactio
 import { TransactionForm } from '@/components/transaction-form'
 import { ReturnForm } from '@/components/return-form'
 import { recordedAmount, returnableAmount } from '@/lib/returns'
-import { Calendar, CreditCard, Tag, FileText, Clock, Hash, Pencil, StickyNote, Trash2, Undo2 } from 'lucide-react'
+import { removeOutboxEntry, retryOutboxEntries } from '@/lib/outbox'
+import { formatSheetTimestamp } from '@/lib/sheets'
+import { Calendar, CloudOff, Copy, CreditCard, Tag, FileText, Clock, Hash, Pencil, RefreshCw, StickyNote, Trash2, Undo2 } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -64,6 +66,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const deleteTransaction = useDeleteTransaction()
   const isEditing = mode !== 'view'
 
@@ -73,7 +76,26 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
     setMode('view')
     setPendingDelete(null)
     setDeleteError(null)
+    setCopied(false)
     onClose()
+  }
+
+  const { unsynced } = transaction
+
+  const handleRetry = async () => {
+    await retryOutboxEntries([transaction.transactionId])
+    handleClose()
+  }
+
+  // The sheet's columns, tab-separated, so a failed transaction can be pasted into a row by hand
+  const handleCopy = async () => {
+    const { timestamp, what, category, amountOriginal, currency } = transaction
+    try {
+      await navigator.clipboard.writeText([formatSheetTimestamp(timestamp), what, category, amountOriginal, currency].join('\t'))
+      setCopied(true)
+    } catch {
+      setDeleteError("Couldn't copy the details.")
+    }
   }
 
   const isReturnDelete = pendingDelete !== null && pendingDelete !== transaction
@@ -84,7 +106,12 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      await deleteTransaction(pendingDelete)
+      // An unsynced transaction is only on this device
+      if (pendingDelete.unsynced) {
+        await removeOutboxEntry(pendingDelete.transactionId)
+      } else {
+        await deleteTransaction(pendingDelete)
+      }
       handleClose()
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Failed to delete the transaction.')
@@ -134,6 +161,25 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               </p>
             )}
           </div>
+
+          {unsynced && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <CloudOff className="h-3 w-3" /> Not synced
+              </p>
+              {unsynced.status === 'failed' ? (
+                <p className="text-xs text-destructive break-words">Not added to the spreadsheet: {unsynced.error ?? 'the sync failed.'}</p>
+              ) : (
+                <p className="text-xs break-words">
+                  Saved on this device. It is added to the spreadsheet when online.
+                  {unsynced.error && ` Last attempt: ${unsynced.error}`}
+                </p>
+              )}
+              {transaction.currency !== defaultCurrency && (
+                <p className="text-xs text-muted-foreground">The {defaultCurrency} amount is an estimate until then.</p>
+              )}
+            </div>
+          )}
 
           {transaction.returns && (
             <div className="space-y-1">
@@ -212,6 +258,24 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
             </div>
           )}
 
+          {/* Not in the sheet yet, so it can't be edited or returned there; a failed one can be sent again or dropped */}
+          {unsynced?.status === 'failed' && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => void handleRetry()}>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Retry
+              </Button>
+              <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => void handleCopy()}>
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? 'Copied' : 'Copy details'}
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2 text-destructive hover:text-destructive" onClick={() => setPendingDelete(transaction)} aria-label="Delete">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+
+          {!unsynced && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => setMode('edit')}>
               <Pencil className="h-3.5 w-3.5" />
@@ -227,6 +291,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
+          )}
 
           {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
 
@@ -234,14 +299,16 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  {blockedByReturns ? 'Remove the returns first' : isReturnDelete ? 'Remove this return?' : 'Delete this transaction?'}
+                  {blockedByReturns ? 'Remove the returns first' : isReturnDelete ? 'Remove this return?' : pendingDelete?.unsynced ? 'Delete this unsynced transaction?' : 'Delete this transaction?'}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   {blockedByReturns
                     ? 'This purchase has returns. Remove them from its details before deleting it.'
                     : isReturnDelete
                       ? `The return of ${formatAmount(Math.abs(pendingDelete.amountOriginal))} ${pendingDelete.currency} is deleted from the spreadsheet, and that amount counts towards the purchase again.`
-                      : 'Its row is deleted from the spreadsheet. This cannot be undone from the app.'}
+                      : pendingDelete?.unsynced
+                        ? 'It is removed from this device and will not be added to the spreadsheet. Copy its details first to enter it by hand.'
+                        : 'Its row is deleted from the spreadsheet. This cannot be undone from the app.'}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

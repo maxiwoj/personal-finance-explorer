@@ -25,8 +25,9 @@ export interface FinanceDataProvider {
   getRecentTransactions: () => Promise<Transaction[]>
   getFullTransactions: () => Promise<Transaction[]>
   reloadData: (scope?: FinanceDataScope) => Promise<void>
-  // queued: saved on this device and sent by the sync (hooks/use-outbox-sync.ts), not yet in the sheet
-  addTransaction: (input: TransactionInput) => Promise<{ queued: boolean }>
+  // queued: saved on this device and sent by the sync (hooks/use-outbox-sync.ts), not yet in the
+  // sheet; outboxId is then its queue entry's
+  addTransaction: (input: TransactionInput) => Promise<{ queued: boolean; outboxId?: string }>
   updateTransaction: (original: Transaction, input: TransactionInput) => Promise<void>
   deleteTransaction: (original: Transaction) => Promise<void>
   // null when the source has no category list (no categories tab, or demo mode)
@@ -172,9 +173,9 @@ function buildGoogleProvider(
       }
 
       if (!input.returnOf && userId && spreadsheetId && storedIds) {
-        await enqueueTransaction(userId, spreadsheetId, input)
+        const entry = await enqueueTransaction(userId, spreadsheetId, input)
         requestOutboxSync()
-        return { queued: true }
+        return { queued: true, outboxId: entry.id }
       }
 
       try {

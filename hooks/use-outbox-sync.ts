@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { getKnownStoredIds, listOutboxEntries, onOutboxSyncRequest, putOutboxEntry, removeOutboxEntry, setKnownStoredIds, subscribeOutbox, type OutboxEntry } from '@/lib/outbox'
 import { retryDelayMs, syncOutbox } from '@/lib/outbox-sync'
-import { appendQueuedTransaction, hasStoredIds, transactionIdExists } from '@/lib/sheets'
+import { appendQueuedTransaction, describeSpreadsheetAccessError, hasStoredIds, SheetsApiError, transactionIdExists } from '@/lib/sheets'
 
 const LOCK_NAME = 'pfe-outbox-sync'
 // A request that hangs on a bad connection would hold the sync lock; an append cut off by the
@@ -20,6 +20,17 @@ function withSyncLock<T>(run: () => Promise<T>): Promise<T> {
     return navigator.locks.request(LOCK_NAME, run)
   }
   return run()
+}
+
+// A failed entry shows its lastError: Google's own message for a lost spreadsheet ("The caller does
+// not have permission") is replaced with what to do about it. A refused append keeps its edit-access
+// message (lib/sheets.ts).
+function withAccessMessage<T>(request: Promise<T>, { isWrite = false } = {}): Promise<T> {
+  return request.catch((error: unknown) => {
+    const message = describeSpreadsheetAccessError(error)
+    if (!message || !(error instanceof SheetsApiError) || (isWrite && error.status === 403)) throw error
+    throw new SheetsApiError(message, error.status)
+  })
 }
 
 interface OutboxSyncOptions {
@@ -70,10 +81,10 @@ export function useOutboxSync({ enabled, userId, spreadsheetId, accessToken, ref
             return refreshed
           },
           knownStoredIds: getKnownStoredIds(spreadsheetId),
-          hasStoredIds: (token) => hasStoredIds(token, spreadsheetId, AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
+          hasStoredIds: (token) => withAccessMessage(hasStoredIds(token, spreadsheetId, AbortSignal.timeout(REQUEST_TIMEOUT_MS))),
           onStoredIds: (storedIds) => setKnownStoredIds(spreadsheetId, storedIds),
-          idExists: (token, id) => transactionIdExists(token, spreadsheetId, id, AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
-          append: (token, entry) => appendQueuedTransaction(token, spreadsheetId, entry.input, entry.id, AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
+          idExists: (token, id) => withAccessMessage(transactionIdExists(token, spreadsheetId, id, AbortSignal.timeout(REQUEST_TIMEOUT_MS))),
+          append: (token, entry) => withAccessMessage(appendQueuedTransaction(token, spreadsheetId, entry.input, entry.id, AbortSignal.timeout(REQUEST_TIMEOUT_MS)), { isWrite: true }),
         }))
         refreshedToken = null
         if (!result) return
@@ -155,4 +166,18 @@ export function useOutboxEntries(): OutboxEntry[] {
   }, [spreadsheetId, userId])
 
   return entries
+}
+
+function subscribeOnline(listener: () => void) {
+  window.addEventListener('online', listener)
+  window.addEventListener('offline', listener)
+  return () => {
+    window.removeEventListener('online', listener)
+    window.removeEventListener('offline', listener)
+  }
+}
+
+// navigator.onLine, re-read on the online and offline events
+export function useOnline(): boolean {
+  return useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
 }
