@@ -18,7 +18,7 @@ export default function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isAuthenticated, isLoading, mode } = useAuth()
+  const { isAuthenticated, isLoading, isOffline, mode } = useAuth()
   const { spreadsheet, accessError } = useSpreadsheet()
   const router = useRouter()
   const pathname = usePathname()
@@ -38,7 +38,8 @@ export default function AppLayout({
     }
   }, [isAuthenticated, isLoading, router])
 
-  if (isLoading || !isAuthenticated || (hasSource && categories.isLoading)) {
+  // Offline there's no token, so categories fail at once; waiting on them would remount the page into a refetch loop
+  if (isLoading || !isAuthenticated || (hasSource && !isOffline && categories.isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner className="h-8 w-8" />

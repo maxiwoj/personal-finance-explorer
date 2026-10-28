@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
@@ -274,10 +275,20 @@ function buildDemoProvider(): FinanceDataProvider {
 }
 
 export function FinanceDataProvider({ children }: { children: ReactNode }) {
-  const { mode, accessToken, refreshSession } = useAuth()
+  const { mode, accessToken, isOffline, refreshSession } = useAuth()
   const { spreadsheet, reportAccessError } = useSpreadsheet()
+  const queryClient = useQueryClient()
   const spreadsheetId = spreadsheet?.id ?? null
   const pickedAt = spreadsheet?.pickedAt ?? null
+  const wasOffline = useRef(isOffline)
+
+  // Queries that failed without a token while offline are retried once the token is back
+  useEffect(() => {
+    if (wasOffline.current && !isOffline && accessToken) {
+      void queryClient.refetchQueries({ predicate: (query) => query.state.status === 'error' })
+    }
+    wasOffline.current = isOffline
+  }, [accessToken, isOffline, queryClient])
 
   const provider = useMemo(() => {
     if (mode === 'demo') {

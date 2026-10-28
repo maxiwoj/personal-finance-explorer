@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -53,7 +53,7 @@ function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { sc
 
 export function Nav() {
   const pathname = usePathname()
-  const { signOut, isExpiring, refreshSession, mode, email } = useAuth()
+  const { signOut, isExpiring, isOffline, refreshSession, mode, email } = useAuth()
   const { spreadsheet, changeSpreadsheet } = useSpreadsheet()
   const reloadFinanceData = useReloadFinanceData()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -121,6 +121,12 @@ export function Nav() {
             <RefreshCw className="h-3 w-3" />
             Refresh
           </button>
+        </div>
+      )}
+      {isOffline && (
+        <div className="bg-muted text-muted-foreground px-4 py-1 text-xs font-medium flex items-center justify-center gap-2">
+          <WifiOff className="h-3 w-3" />
+          <span>Offline</span>
         </div>
       )}
       <div className="container px-4 md:px-6 lg:px-8 mx-auto max-w-7xl flex h-14 items-center gap-2">
