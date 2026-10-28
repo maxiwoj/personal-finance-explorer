@@ -124,4 +124,5 @@ jobs:
           SHA: ${{ needs.resolve.outputs.sha }}
           URL: ${{ needs.resolve.outputs.url }}
           STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
-        run: echo "PR #${PR} @ \`${SHA}\`: ${URL} → https://${STAGING_DOMAIN}" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "PR #${PR} @ \`${SHA}\`: ${URL} → https://${STAGING_DOMAIN}" >> "$GITHUB_STEP_SUMMARY"
