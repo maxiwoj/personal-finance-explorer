@@ -1,0 +1,128 @@
+name: Deploy PR to staging
+
+# Points the staging domain at the Vercel preview deployment of a PR labeled
+# `deploy-staging`. No extra build: it reuses the preview Vercel already built.
+# - Labeling a PR aliases its current head (waiting for the preview if needed).
+# - New commits on a labeled PR are aliased when Vercel reports them deployed.
+# Only one PR owns staging at a time: the label is removed from other open PRs.
+#
+# Requires: secret VERCEL_TOKEN, variables STAGING_DOMAIN and VERCEL_SCOPE
+# (team slug or id).
+
+on:
+  pull_request:
+    types: [labeled]
+  deployment_status:
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: write
+
+env:
+  STAGING_LABEL: deploy-staging
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  resolve:
+    if: >-
+      (github.event_name == 'pull_request' && github.event.label.name == 'deploy-staging') ||
+      (github.event_name == 'deployment_status' &&
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.creator.login == 'vercel[bot]' &&
+        startsWith(github.event.deployment.environment, 'preview'))
+    runs-on: ubuntu-latest
+    outputs:
+      pr: ${{ steps.resolve.outputs.pr }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      url: ${{ steps.resolve.outputs.url }}
+    steps:
+      - name: Resolve PR and preview URL
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+          DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            sha="$PR_SHA"; pr="$PR_NUMBER"; url=""
+            # Wait up to 15 min for Vercel to report a successful preview for this commit.
+            for _ in $(seq 1 90); do
+              for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?sha=$sha" \
+                  --jq '.[] | select(.creator.login == "vercel[bot]" and (.environment | ascii_downcase | startswith("preview"))) | .id'); do
+                url=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+                  --jq '[.[] | select(.state == "success")][0].environment_url // empty')
+                [ -n "$url" ] && break 2
+              done
+              sleep 10
+            done
+            [ -n "$url" ] || { echo "::error::No successful Vercel preview for $sha"; exit 1; }
+          else
+            sha="$DEPLOY_SHA"; url="$DEPLOY_URL"
+            # Only alias if this commit is the current head of an open labeled PR.
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" --jq \
+              "[.[] | select(.state == \"open\" and .head.sha == \"$sha\" and any(.labels[]; .name == \"$STAGING_LABEL\"))][0].number // empty")
+          fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # Separate job so only runs that will alias enter the concurrency group;
+  # a newer pending run replaces an older one, so the latest commit wins.
+  alias-staging:
+    needs: resolve
+    if: needs.resolve.outputs.pr != ''
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Alias preview to staging domain
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+          URL: ${{ needs.resolve.outputs.url }}
+        # REST API instead of the Vercel CLI: the CLI first loads the token's
+        # user, which fails with "User not found" for team-scoped tokens.
+        run: |
+          set -euo pipefail
+          case "$VERCEL_SCOPE" in team_*) scope="teamId=$VERCEL_SCOPE" ;; *) scope="slug=$VERCEL_SCOPE" ;; esac
+          api() {
+            local out code
+            out=$(mktemp)
+            code=$(curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" -H 'Content-Type: application/json' "$@")
+            if [ "$code" -ge 300 ]; then
+              echo "Vercel API $code: $(jq -c '.error // .' "$out")" >&2
+              exit 1
+            fi
+            cat "$out"
+          }
+          id=$(api "https://api.vercel.com/v13/deployments/${URL#https://}?$scope" | jq -r '.id')
+          api -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$scope" \
+            -d "$(jq -cn --arg alias "$STAGING_DOMAIN" '{alias: $alias}')" | jq -c '{alias, uid}'
+
+      - name: Remove label from other PRs
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --label "$STAGING_LABEL" --state open --json number --jq '.[].number' |
+            while read -r n; do
+              if [ "$n" != "$PR_NUMBER" ]; then
+                gh pr edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label "$STAGING_LABEL"
+                gh pr comment "$n" --repo "$GITHUB_REPOSITORY" --body "Staging was taken over by #${PR_NUMBER}; label removed."
+              fi
+            done
+
+      - name: Summary
+        env:
+          PR: ${{ needs.resolve.outputs.pr }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          URL: ${{ needs.resolve.outputs.url }}
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+        run: |
+          echo "PR #${PR} @ \`${SHA}\`: ${URL} → https://${STAGING_DOMAIN}" >> "$GITHUB_STEP_SUMMARY"
