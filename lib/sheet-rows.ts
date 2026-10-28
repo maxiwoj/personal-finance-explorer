@@ -171,3 +171,8 @@ export function parseCategoriesAndRecent(valueRanges: { values?: string[][] }[] 
     recentTransactions: parseTransactionRows(recent?.values || []),
   }
 }
+
+// Indexes of the TransactionID cells (column H, read as rows) holding this ID
+export function rowsWithId(ids: string[][], transactionId: string): number[] {
+  return ids.flatMap((row, index) => row[0]?.trim() === transactionId ? [index] : [])
+}
