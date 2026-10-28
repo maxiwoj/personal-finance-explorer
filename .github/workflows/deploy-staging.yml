@@ -86,7 +86,24 @@ jobs:
           VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
           STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
           URL: ${{ needs.resolve.outputs.url }}
-        run: npx --yes vercel@64.0.2 alias set "$URL" "$STAGING_DOMAIN" --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE"
+        # REST API instead of the Vercel CLI: the CLI first loads the token's
+        # user, which fails with "User not found" for team-scoped tokens.
+        run: |
+          set -euo pipefail
+          case "$VERCEL_SCOPE" in team_*) scope="teamId=$VERCEL_SCOPE" ;; *) scope="slug=$VERCEL_SCOPE" ;; esac
+          api() {
+            local out code
+            out=$(mktemp)
+            code=$(curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" -H 'Content-Type: application/json' "$@")
+            if [ "$code" -ge 300 ]; then
+              echo "Vercel API $code: $(jq -c '.error // .' "$out")" >&2
+              exit 1
+            fi
+            cat "$out"
+          }
+          id=$(api "https://api.vercel.com/v13/deployments/${URL#https://}?$scope" | jq -r '.id')
+          api -X POST "https://api.vercel.com/v2/deployments/$id/aliases?$scope" \
+            -d "$(jq -cn --arg alias "$STAGING_DOMAIN" '{alias: $alias}')" | jq -c '{alias, uid}'
 
       - name: Remove label from other PRs
         if: github.event_name == 'pull_request'
