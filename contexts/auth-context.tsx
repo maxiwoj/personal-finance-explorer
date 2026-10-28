@@ -69,6 +69,28 @@ declare global {
   }
 }
 
+let googleScript: Promise<void> | null = null
+
+function loadGoogleScript(): Promise<void> {
+  if (!googleScript) {
+    googleScript = new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.onload = () => resolve()
+      script.onerror = () => {
+        // Lets a later attempt try again
+        googleScript = null
+        script.remove()
+        reject(new Error('Failed to load Google authentication'))
+      }
+      document.body.appendChild(script)
+    })
+  }
+  return googleScript
+}
+
 function clearGoogleSession() {
   localStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(EXPIRY_KEY)
@@ -98,7 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(MODE_KEY)
   }, [])
 
-  const handleAuthResponse = useCallback(async (data: { access_token: string, expiry_date: number, scope?: string }) => {
+  // On a refresh the user is already known from the stored session, so userinfo is skipped;
+  // a sign-in always fetches it, since another account may be signing in
+  const handleAuthResponse = useCallback(async (data: { access_token: string, expiry_date: number, scope?: string }, { isRefresh = false } = {}) => {
     // Users can untick scopes on the consent screen; without drive.file the app can't read any sheet
     if (data.scope && !data.scope.split(' ').includes(DRIVE_FILE_SCOPE)) {
       throw new MissingScopeError()
@@ -106,24 +130,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Resolve the user before exposing the token so per-user settings (selected spreadsheet) load correctly
     let resolvedUserId = localStorage.getItem(USER_ID_KEY)
-    try {
-      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      })
+    const storedEmail = localStorage.getItem(HINT_KEY)
+    if (isRefresh && resolvedUserId && storedEmail) {
+      setEmail(storedEmail)
+    } else {
+      try {
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        })
 
-      if (userInfoResponse.ok) {
-        const userInfo = await userInfoResponse.json()
-        if (userInfo.email) {
-          setEmail(userInfo.email)
-          localStorage.setItem(HINT_KEY, userInfo.email)
+        if (userInfoResponse.ok) {
+          const userInfo = await userInfoResponse.json()
+          if (userInfo.email) {
+            setEmail(userInfo.email)
+            localStorage.setItem(HINT_KEY, userInfo.email)
+          }
+          if (userInfo.sub) {
+            resolvedUserId = userInfo.sub
+            localStorage.setItem(USER_ID_KEY, userInfo.sub)
+          }
         }
-        if (userInfo.sub) {
-          resolvedUserId = userInfo.sub
-          localStorage.setItem(USER_ID_KEY, userInfo.sub)
-        }
+      } catch (fetchError) {
+        console.error('Failed to fetch user hint:', fetchError)
       }
-    } catch (fetchError) {
-      console.error('Failed to fetch user hint:', fetchError)
     }
 
     setMode('google')
@@ -151,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json()
-      await handleAuthResponse(data)
+      await handleAuthResponse(data, { isRefresh: true })
       return true
     } catch (e) {
       if (e instanceof MissingScopeError) {
@@ -226,13 +255,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void init()
   }, [refreshSession])
 
+  // The sign-in script (~277KB) is loaded only once sign-in is needed, so a signed-in launch skips it
+  const needsSignIn = !isLoading && mode === null
+
   useEffect(() => {
-    const script = document.createElement('script')
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.defer = true
-    script.onload = () => {
-      if (window.google && GOOGLE_CLIENT_ID) {
+    if (!needsSignIn) return
+    let cancelled = false
+
+    loadGoogleScript().then(() => {
+      if (!cancelled && window.google && GOOGLE_CLIENT_ID) {
         const client = window.google.accounts.oauth2.initCodeClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: REQUIRED_SCOPES,
@@ -278,20 +309,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         setCodeClient(client)
       }
-    }
-    script.onerror = () => {
+    }, () => {
+      if (cancelled) return
       setError('Failed to load Google authentication')
       setIsLoading(false)
-    }
-    document.body.appendChild(script)
+    })
 
     return () => {
-      const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
-      if (existingScript) {
-        existingScript.remove()
-      }
+      cancelled = true
     }
-  }, [handleAuthResponse])
+  }, [handleAuthResponse, needsSignIn])
 
   const signInWithGoogle = useCallback(() => {
     if (!codeClient) {
@@ -341,8 +368,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null)
     clearAuthState()
 
-    if (activeMode === 'google' && currentToken && window.google) {
-      window.google.accounts.oauth2.revoke(currentToken, () => undefined)
+    if (activeMode === 'google' && currentToken) {
+      loadGoogleScript()
+        .then(() => window.google?.accounts.oauth2.revoke(currentToken, () => undefined))
+        .catch((e) => console.error('Revoke error:', e))
     }
   }, [accessToken, clearAuthState, mode])
 

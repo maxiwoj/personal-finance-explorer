@@ -59,6 +59,9 @@ export function Nav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
 
+  // /add is the app's launch page: prefetching the other pages there (the dashboard's charts
+  // alone are ~1MB) would compete with the form's own loading
+  const prefetch = pathname === '/add' ? false : undefined
   const activeMode = mode ?? 'google'
   const reloadConfig = useMemo(() => getReloadConfig(pathname, activeMode), [activeMode, pathname])
 
@@ -95,7 +98,7 @@ export function Nav() {
           </DropdownMenuItem>
         )}
         <DropdownMenuItem asChild>
-          <Link href="/currencies">
+          <Link href="/currencies" prefetch={prefetch}>
             <Coins className="h-4 w-4" />
             Currencies
           </Link>
@@ -121,7 +124,7 @@ export function Nav() {
         </div>
       )}
       <div className="container px-4 md:px-6 lg:px-8 mx-auto max-w-7xl flex h-14 items-center gap-2">
-        <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
+        <Link href="/dashboard" prefetch={prefetch} className="mr-6 flex items-center space-x-2">
           <span className="font-bold text-lg">Finance Explorer</span>
         </Link>
 
@@ -132,6 +135,7 @@ export function Nav() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={prefetch}
                 className={cn(
                   'flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors',
                   pathname === item.href || pathname.startsWith(item.href + '/')
@@ -179,6 +183,7 @@ export function Nav() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={prefetch}
                 onClick={() => setMobileMenuOpen(false)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors',
