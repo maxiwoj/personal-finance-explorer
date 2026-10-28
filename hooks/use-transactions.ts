@@ -60,17 +60,13 @@ export function useReloadFinanceData() {
   }
 }
 
-// Writes go to the full tab; the recent tab is derived from it, so both caches are dropped.
-// Demo reloadData regenerates the dataset, so demo writes only invalidate the queries.
+// Writes go to the full tab; the recent tab is derived from it, so both are refetched.
+// Demo reloadData regenerates the dataset, so it isn't called here.
 function useAfterWrite() {
   const provider = useFinanceDataProvider()
   const queryClient = useQueryClient()
 
   return async () => {
-    if (provider.mode === 'google') {
-      await provider.reloadData('all')
-    }
-
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['recent-transactions', provider.mode] }),
       queryClient.invalidateQueries({ queryKey: ['full-transactions', provider.mode] }),
@@ -91,7 +87,13 @@ export function useSaveTransaction() {
       await provider.addTransaction(input)
     }
 
-    await afterWrite()
+    // A new transaction is shown from what was entered, so the refetch runs in the background.
+    // Edits and returns are shown from the refetched rows (a return changes its purchase's amount).
+    if (original || input.returnOf) {
+      await afterWrite()
+    } else {
+      void afterWrite()
+    }
   }
 }
 

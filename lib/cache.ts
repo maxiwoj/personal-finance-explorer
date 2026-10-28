@@ -1,8 +1,12 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Transaction } from './types'
+import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client'
+import { withoutErrors } from './query-persistence'
 
 const DB_NAME = 'finance-explorer'
 const DB_VERSION = 1
+const QUERY_CACHE_PREFIX = 'query-cache:'
+// Query cache changes come in bursts (a batch of queries settling); one write per second is enough
+const WRITE_THROTTLE_MS = 1000
 
 interface CacheDB {
   cache: {
@@ -12,6 +16,8 @@ interface CacheDB {
 }
 
 let dbPromise: Promise<IDBPDatabase<CacheDB>> | null = null
+// Bumped by clearCache, so a write scheduled before a clear can't bring the cleared data back
+let generation = 0
 
 function getDB() {
   if (!dbPromise) {
@@ -26,87 +32,51 @@ function getDB() {
   return dbPromise
 }
 
-export async function getCachedRecentTransactions(): Promise<Transaction[] | null> {
-  try {
-    const db = await getDB()
-    const data = await db.get('cache', 'recent_transactions')
-    if (data) {
-      return (data as Transaction[]).map(t => ({
-        ...t,
-        timestamp: new Date(t.timestamp)
-      }))
+// Stores the React Query cache under one key per scope (see persistScopeKey). IndexedDB keeps
+// values as structured clones, so transaction timestamps come back as Dates.
+export function createQueryPersister(scope: string): Persister {
+  const key = `${QUERY_CACHE_PREFIX}${scope}`
+  const createdIn = generation
+  let latest: PersistedClient | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const write = async () => {
+    timer = null
+    const client = latest
+    latest = null
+    if (!client) return
+    try {
+      const db = await getDB()
+      if (createdIn !== generation) return
+      await db.put('cache', withoutErrors(client), key)
+    } catch (error) {
+      console.error('Failed to cache data:', error)
     }
-    return null
-  } catch {
-    return null
+  }
+
+  return {
+    async persistClient(client) {
+      latest = client
+      timer ??= setTimeout(() => void write(), WRITE_THROTTLE_MS)
+    },
+    async restoreClient() {
+      const db = await getDB()
+      return (await db.get('cache', key)) as PersistedClient | undefined
+    },
+    async removeClient() {
+      try {
+        const db = await getDB()
+        await db.delete('cache', key)
+      } catch (error) {
+        console.error('Failed to remove cached data:', error)
+      }
+    },
   }
 }
 
-export async function setCachedRecentTransactions(transactions: Transaction[]): Promise<void> {
-  try {
-    const db = await getDB()
-    await db.put('cache', transactions, 'recent_transactions')
-    await db.put('cache', Date.now(), 'last_sync_timestamp')
-  } catch (error) {
-    console.error('Failed to cache recent transactions:', error)
-  }
-}
-
-export async function getCachedFullTransactions(): Promise<Transaction[] | null> {
-  try {
-    const db = await getDB()
-    const data = await db.get('cache', 'full_transactions')
-    if (data) {
-      return (data as Transaction[]).map(t => ({
-        ...t,
-        timestamp: new Date(t.timestamp)
-      }))
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-export async function setCachedFullTransactions(transactions: Transaction[]): Promise<void> {
-  try {
-    const db = await getDB()
-    await db.put('cache', transactions, 'full_transactions')
-    await db.put('cache', Date.now(), 'last_sync_timestamp')
-  } catch (error) {
-    console.error('Failed to cache full transactions:', error)
-  }
-}
-
-export async function clearRecentTransactionsCache(): Promise<void> {
-  try {
-    const db = await getDB()
-    await db.delete('cache', 'recent_transactions')
-  } catch (error) {
-    console.error('Failed to clear recent transactions cache:', error)
-  }
-}
-
-export async function clearFullTransactionsCache(): Promise<void> {
-  try {
-    const db = await getDB()
-    await db.delete('cache', 'full_transactions')
-  } catch (error) {
-    console.error('Failed to clear full transactions cache:', error)
-  }
-}
-
-export async function getLastSyncTimestamp(): Promise<number | null> {
-  try {
-    const db = await getDB()
-    const timestamp = await db.get('cache', 'last_sync_timestamp')
-    return timestamp as number | null
-  } catch {
-    return null
-  }
-}
-
+// Every user's and spreadsheet's cached data
 export async function clearCache(): Promise<void> {
+  generation++
   try {
     const db = await getDB()
     await db.clear('cache')

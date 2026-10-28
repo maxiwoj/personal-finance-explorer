@@ -16,6 +16,9 @@ export function Providers({ children }: { children: ReactNode }) {
           queries: {
             refetchOnWindowFocus: false,
             retry: 1,
+            // Kept while unused (e.g. full transactions while on /add), so the persisted cache
+            // (lib/cache.ts) doesn't lose them; there are only a few queries per spreadsheet
+            gcTime: Infinity,
           },
         },
       })
