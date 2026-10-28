@@ -1,0 +1,62 @@
+name: Deploy PR to staging
+
+# Adding the `deploy-staging` label to a PR force-pushes the PR head to the
+# `staging` branch, which Vercel deploys to the staging domain. New commits on a
+# labeled PR are redeployed. Only one PR owns staging at a time: the label is
+# removed from any other open PR.
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+env:
+  STAGING_LABEL: deploy-staging
+  STAGING_BRANCH: staging
+
+jobs:
+  push-to-staging:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'deploy-staging') ||
+        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy-staging'))
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Force-push PR head to staging
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git push --force origin "${HEAD_SHA}:refs/heads/${STAGING_BRANCH}"
+
+      - name: Remove label from other PRs
+        if: github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --label "$STAGING_LABEL" --state open --json number --jq '.[].number' |
+            while read -r n; do
+              if [ "$n" != "$PR_NUMBER" ]; then
+                gh pr edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label "$STAGING_LABEL"
+                gh pr comment "$n" --repo "$GITHUB_REPOSITORY" --body "Staging was taken over by #${PR_NUMBER}; label removed."
+              fi
+            done
+
+      - name: Summary
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: echo "Pushed \`${HEAD_REF}\` @ \`${HEAD_SHA}\` to \`${STAGING_BRANCH}\`." >> "$GITHUB_STEP_SUMMARY"
