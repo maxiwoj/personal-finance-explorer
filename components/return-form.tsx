@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AlertCircle } from 'lucide-react'
+import { useUnsavedInput } from '@/lib/unsaved-input'
 
 interface ReturnFormProps {
   purchase: Transaction
@@ -26,6 +27,7 @@ export function ReturnForm({ purchase, onSaved, onCancel }: ReturnFormProps) {
   const [amount, setAmount] = useState(String(returnable))
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  useUnsavedInput(isSaving || amount !== String(returnable))
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()

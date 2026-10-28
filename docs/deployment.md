@@ -108,6 +108,7 @@ All variables are read in `lib/config.ts` and `lib/auth-server.ts`. Set them in 
 | `NEXT_PUBLIC_GOOGLE_API_KEY` | **Yes** | API key for the Google Picker (spreadsheet selection). | Google Cloud Console > **APIs & Services > Credentials** > **Create Credentials > API key**, restricted as in [Create a Picker API Key](#create-a-picker-api-key) | `AIza…` (39 chars) | Build time (inlined). Browser only: `lib/google-picker.ts`. Missing → "Google Picker is not configured". |
 | `NEXT_PUBLIC_GOOGLE_APP_ID` | **Yes** | Google Cloud **project number** (numeric, *not* the project ID). Ties picker file grants to your project. | Prefix of the client ID before the first `-`, or **IAM & Admin > Settings > Project number** (see [Find the Project Number](#find-the-project-number)) | `123456789012` | Build time (inlined). Browser only: `lib/google-picker.ts`. Missing → picker not configured; wrong → reads of picked sheets fail. |
 | `NEXT_PUBLIC_SPREADSHEET_ID` | No | Default spreadsheet used before the user picks one. Only works for accounts that have picked that sheet at least once (`drive.file` scope). | The spreadsheet URL: `https://docs.google.com/spreadsheets/d/<ID>/edit` | `1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo` | Build time (inlined). Browser only: `contexts/spreadsheet-context.tsx`. Empty → users see the setup screen and pick a sheet. |
+| `NEXT_PUBLIC_SW_KILL_SWITCH` | No | Emergency switch that removes the service worker from every installed app. | Set to `1` only to recover from a bad release, see [Service worker kill switch](#service-worker-kill-switch) | `1` | Build time. `app/serwist/[path]/route.ts` (builds `app/sw-kill-switch.ts` instead of `app/sw.ts`) and `lib/app-update.ts` (pages unregister instead of registering). |
 
 Do not set `NODE_ENV`; Vercel and Next.js set it (it controls the `Secure` flag on the refresh-token cookie).
 
@@ -146,6 +147,48 @@ Once deployed, you **must** allow the production URL (and your custom domain, if
 4. Save. Changes can take a few minutes to apply.
 
 The full list must match the [Authorized origins](#authorized-origins) table. OAuth origins do not support wildcards, so each preview URL you want to sign in on must be added explicitly.
+
+---
+
+## 6. Install as an App (Offline)
+
+The app is an installable web app (`app/manifest.ts`): it opens on `/add`, full screen, and loads offline after one online visit.
+
+### Install
+- **iPhone / iPad**: open `https://your-app/add` in Safari, tap **Share → Add to Home Screen**, keep **Open as Web App** on. The installed app has its own storage, so sign in once inside it.
+- **Android / desktop Chrome**: **Install app** in the browser menu or address bar.
+
+After more than about 5 minutes in the background, the installed app goes back to `/add` when it's reopened, unless a form has unsaved input.
+
+### What works offline
+The service worker (`app/sw.ts`, built with [Serwist](https://serwist.pages.dev) for Turbopack and served from `/serwist/sw.js`) caches at install: the pages (`/add`, `/dashboard`, `/transactions`, …), the build's JS and CSS, the fonts and the files in `public/`. It never caches `/api/*` or Google API responses; the data shown offline is the IndexedDB cache (see [Architecture](./architecture.md#storage--privacy)). `/category/<name>` is rendered on demand and doesn't open offline.
+
+### Updates
+- Every deployment produces a new service worker. The app checks for one when it comes back to the foreground, and from **Account menu → Check for updates** (an installed iOS app has no pull-to-refresh).
+- The new version downloads in the background. With no unsaved input in a form it's applied at once (the page reloads); otherwise the nav shows **New version – Reload**.
+- A page keeps the JS of the version it was loaded with; it switches to the new version only by reloading.
+- `/serwist/sw.js` is served with `Cache-Control: no-cache` (`next.config.mjs`), so browsers always revalidate it.
+
+### Service worker kill switch
+If a release breaks the cached app (e.g. it can't load, so it never sees an update):
+
+1. In Vercel, set `NEXT_PUBLIC_SW_KILL_SWITCH=1` and redeploy.
+2. On their next update check (opening the app, or the browser's own check on navigation), installed apps get `app/sw-kill-switch.ts` instead of the normal worker: it deletes its caches, unregisters itself and reloads open pages from the network. With the flag set, pages unregister any worker instead of registering one.
+3. Fix the release, remove the variable and redeploy. The next visit installs the normal worker again.
+
+The kill switch worker:
+
+```ts
+self.addEventListener('install', () => void self.skipWaiting())
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    await self.registration.unregister()
+    await Promise.all((await caches.keys()).map((key) => caches.delete(key)))
+    const windows = await self.clients.matchAll({ type: 'window' })
+    await Promise.all(windows.map((client) => client.navigate(client.url).catch(() => null)))
+  })())
+})
+```
 
 ---
 

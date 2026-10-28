@@ -43,6 +43,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
 -   **IndexedDB**: The TanStack Query cache (categories, currencies, the rates' start, recent and full transactions) is saved per Google user and spreadsheet (`lib/cache.ts`, `lib/query-persistence.ts`) for up to 30 days. A launch shows it at once, also offline, and refreshes it in the background. It is cleared on sign-out and when the spreadsheet changes.
+-   **Service worker cache**: The pages, JS, CSS, fonts and `public/` files of the current version (`app/sw.ts`), so the installed app loads offline. No API or Google responses. See [Install as an App](./deployment.md#6-install-as-an-app-offline).
 
 ## Performance Optimizations
 
