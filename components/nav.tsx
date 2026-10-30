@@ -14,10 +14,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { applyUpdate, checkForUpdates, useUpdateStatus, type UpdateStatus } from '@/lib/app-update'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -51,6 +52,13 @@ function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { sc
   }
 }
 
+const UPDATE_MESSAGES: Record<Exclude<UpdateStatus, 'idle'>, string> = {
+  checking: 'Checking for updates...',
+  'up-to-date': 'Up to date',
+  failed: "Couldn't check for updates",
+  available: 'New version',
+}
+
 export function Nav() {
   const pathname = usePathname()
   const { signOut, isExpiring, isOffline, refreshSession, mode, email } = useAuth()
@@ -58,6 +66,7 @@ export function Nav() {
   const reloadFinanceData = useReloadFinanceData()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
+  const updateStatus = useUpdateStatus()
 
   // /add is the app's launch page: prefetching the other pages there (the dashboard's charts
   // alone are ~1MB) would compete with the form's own loading
@@ -103,6 +112,11 @@ export function Nav() {
             Currencies
           </Link>
         </DropdownMenuItem>
+        {/* An installed iOS app has no reload gesture */}
+        <DropdownMenuItem onSelect={() => void checkForUpdates({ manual: true })}>
+          <Download className="h-4 w-4" />
+          Check for updates
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={signOut}>
           <LogOut className="h-4 w-4" />
           Sign Out
@@ -127,6 +141,18 @@ export function Nav() {
         <div className="bg-muted text-muted-foreground px-4 py-1 text-xs font-medium flex items-center justify-center gap-2">
           <WifiOff className="h-3 w-3" />
           <span>Offline</span>
+        </div>
+      )}
+      {updateStatus !== 'idle' && (
+        <div className="bg-muted text-muted-foreground px-4 py-1 text-xs font-medium flex items-center justify-center gap-2">
+          <Download className="h-3 w-3" />
+          <span>{UPDATE_MESSAGES[updateStatus]}</span>
+          {updateStatus === 'available' && (
+            <button onClick={applyUpdate} className="underline underline-offset-2 flex items-center gap-1">
+              <RefreshCw className="h-3 w-3" />
+              Reload
+            </button>
+          )}
         </div>
       )}
       <div className="container px-4 md:px-6 lg:px-8 mx-auto max-w-7xl flex h-14 items-center gap-2">

@@ -8,6 +8,7 @@ import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
 import { cn } from '@/lib/utils'
+import { useUnsavedInput } from '@/lib/unsaved-input'
 import type { CategoryDefinition, Transaction, TransactionInput } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -283,13 +284,21 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   )
   const categoryRank = useMemo(() => byFrequency((transactions ?? []).map(t => t.category)), [transactions])
 
-  const [amount, setAmount] = useState(original ? String(recordedAmount(original).amountOriginal) : '')
-  const [what, setWhat] = useState(original?.what ?? '')
-  const [category, setCategory] = useState(original?.category ?? '')
-  // null until picked: a new transaction then uses the most common currency
-  const [currency, setCurrency] = useState<string | null>(original?.currency ?? null)
-  const [timestamp, setTimestamp] = useState(original ? toDateTimeLocal(original.timestamp) : '')
-  const [notes, setNotes] = useState(original?.notes ?? '')
+  const [initial] = useState(() => ({
+    amount: original ? String(recordedAmount(original).amountOriginal) : '',
+    what: original?.what ?? '',
+    category: original?.category ?? '',
+    // null until picked: a new transaction then uses the most common currency
+    currency: original?.currency ?? null,
+    timestamp: original ? toDateTimeLocal(original.timestamp) : '',
+    notes: original?.notes ?? '',
+  }))
+  const [amount, setAmount] = useState(initial.amount)
+  const [what, setWhat] = useState(initial.what)
+  const [category, setCategory] = useState(initial.category)
+  const [currency, setCurrency] = useState<string | null>(initial.currency)
+  const [timestamp, setTimestamp] = useState(initial.timestamp)
+  const [notes, setNotes] = useState(initial.notes)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCreatingList, setIsCreatingList] = useState(false)
@@ -299,6 +308,12 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   // A saved transaction dated before the currency rates start, which cannot be converted yet
   const [beforeStart, setBeforeStart] = useState<{ result: TransactionInput; ratesStart: RatesStart & { start: StartDate } } | null>(null)
   const [confirmExtend, setConfirmExtend] = useState(false)
+
+  // Holds back an app update's reload (lib/app-update.ts) while there's something to lose
+  useUnsavedInput(
+    isSaving || beforeStart !== null || newCategory.trim() !== '' || amount !== initial.amount || what !== initial.what ||
+    category !== initial.category || currency !== initial.currency || timestamp !== initial.timestamp || notes !== initial.notes
+  )
 
   const effectiveCurrency = currency ?? currencies[0]
   const normalizedCategory = category.trim().toLowerCase()

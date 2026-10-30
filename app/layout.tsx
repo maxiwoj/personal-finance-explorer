@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
+import { AppLifecycle } from '@/components/app-lifecycle'
 import './globals.css'
 
 const _geist = Geist({ subsets: ['latin'] })
@@ -23,6 +24,10 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  // The manifest (app/manifest.ts) makes it standalone; this covers iOS before 16.4
+  appleWebApp: {
+    capable: true,
+  },
 }
 
 export const viewport: Viewport = {
@@ -40,6 +45,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
+        <AppLifecycle />
         <Analytics />
       </body>
     </html>

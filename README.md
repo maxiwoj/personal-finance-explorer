@@ -39,7 +39,7 @@ Want to see the app in action? Visit the [live demo](https://v0-personal-finance
 - **Fixed Category Order and Colors**: An optional `categories` tab sets the order of the category buttons and each category's color across the app. The Add page can create it from your existing categories.
 - **Currencies**: Amounts are shown in the default currency from `currencyDates!B1`. The **Currencies** page (account menu) adds a currency converted with Google Finance rates, or a fixed multiplier such as 0.5 for a joint account; it also changes a multiplier or the default currency (with a warning about transactions converted silently) and removes unused currencies. See [Currencies](./docs/currencies.md).
 - **Manage Categories on the Add Page**: **Manage categories** adds categories or hides ones you no longer use from the Add page. Hidden categories stay in the `categories` tab (column C) with their color, still appear when editing, and their transactions do not change.
-- **Quick Add on iPhone**: Open `/add` in Safari, tap **Share → Add to Home Screen**, and turn off **Open as Web App** if shown, so the shortcut shares Safari's sign-in.
+- **Quick Add on iPhone**: Open `/add` in Safari and tap **Share → Add to Home Screen**. The installed app opens on the Add page, also offline after one online visit, and updates itself; sign in once inside it. See [Install as an App](./docs/deployment.md#6-install-as-an-app-offline).
 - **Multi-dimensional Filtering**: Filter by date range, month/year, and categories.
 - **Privacy First**: Authenticate with Google OAuth and keep your data in your own spreadsheet.
 
