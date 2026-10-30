@@ -29,9 +29,9 @@ export const REPO_URL = 'https://github.com/maxiwoj/personal-finance-explorer-rs
 export const AUTHOR = {
   name: 'Maksymilian Wojczuk',
   links: [
+    { label: 'Website', href: 'https://mwojczuk.xyz', icon: Globe },
     { label: 'GitHub', href: 'https://github.com/maxiwoj', icon: Github },
     { label: 'LinkedIn', href: 'https://www.linkedin.com/in/maksymilian-wojczuk-53a669121', icon: Linkedin },
     { label: 'Photography', href: 'https://mwojczuk.photo', icon: Camera },
-    { label: 'Website', href: 'https://mwojczuk.xyz', icon: Globe },
   ],
 }
