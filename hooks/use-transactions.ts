@@ -1,13 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
 import { useFinanceDataProvider, type FinanceDataProvider } from '@/contexts/data-provider-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
-import { useOutboxEntries } from '@/hooks/use-outbox-sync'
-import type { OutboxEntry } from '@/lib/outbox'
-import { leftQueue, mergeOutbox } from '@/lib/outbox-view'
+import { useOutboxEntries, useSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
+import { mergeOutbox } from '@/lib/outbox-view'
 import { resolveDefaultCurrency, type ExtendResult, type RatesStart, type StartDate } from '@/lib/currencies'
 import { linkReturns } from '@/lib/returns'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
@@ -49,33 +48,18 @@ export function useFullTransactions() {
 // doesn't disappear in between. undefined while the transactions are.
 export function useTransactionsWithOutbox(transactions: Transaction[] | undefined, dataUpdatedAt: number): Transaction[] | undefined {
   const entries = useOutboxEntries()
+  const synced = useSyncedOutboxEntries()
   const defaultCurrency = useDefaultCurrency()
   const { data: currencies } = useCurrencies()
   const { userId } = useAuth()
   const { spreadsheet } = useSpreadsheet()
   const spreadsheetId = spreadsheet?.id ?? null
-  const previous = useRef<OutboxEntry[]>([])
-  const [synced, setSynced] = useState<{ entry: OutboxEntry; at: number }[]>([])
 
-  useEffect(() => {
-    const left = leftQueue(previous.current, entries)
-    previous.current = entries
-    if (left.length > 0) {
-      const at = Date.now()
-      setSynced((current) => [...current, ...left.map((entry) => ({ entry, at }))])
-    }
-  }, [entries])
-
-  // Until a refetch that started after the entry left the queue; other users' and spreadsheets'
-  // entries only leave it because the scope changed
+  // Until a refetch that started after the entry left the queue
   const showSynced = useMemo(
     () => synced.filter(({ entry, at }) => dataUpdatedAt < at && entry.userId === userId && entry.spreadsheetId === spreadsheetId).map(({ entry }) => entry),
     [dataUpdatedAt, spreadsheetId, synced, userId]
   )
-
-  useEffect(() => {
-    if (showSynced.length < synced.length) setSynced((current) => current.filter(({ entry }) => showSynced.includes(entry)))
-  }, [showSynced, synced.length])
 
   return useMemo(
     () => transactions && mergeOutbox(transactions, entries, showSynced, defaultCurrency, currencies ?? null),
