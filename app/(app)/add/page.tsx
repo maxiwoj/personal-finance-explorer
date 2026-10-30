@@ -42,7 +42,7 @@ export default function AddTransactionPage() {
             </div>
             <div className="flex w-full gap-2 pt-2">
               <Button variant="outline" size="lg" className="flex-1" asChild>
-                <Link href="/transactions">View transactions</Link>
+                <Link href="/dashboard">View dashboard</Link>
               </Button>
               <Button size="lg" className="flex-1" onClick={() => setSaved(null)} autoFocus>
                 Add another

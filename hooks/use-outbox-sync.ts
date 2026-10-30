@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { getKnownStoredIds, listOutboxEntries, onOutboxSyncRequest, putOutboxEntry, removeOutboxEntry, setKnownStoredIds, subscribeOutbox, type OutboxEntry } from '@/lib/outbox'
 import { retryDelayMs, syncOutbox } from '@/lib/outbox-sync'
+import { leftQueue } from '@/lib/outbox-view'
 import { appendQueuedTransaction, describeSpreadsheetAccessError, hasStoredIds, SheetsApiError, transactionIdExists } from '@/lib/sheets'
 
 const LOCK_NAME = 'pfe-outbox-sync'
@@ -166,6 +167,47 @@ export function useOutboxEntries(): OutboxEntry[] {
   }, [spreadsheetId, userId])
 
   return entries
+}
+
+export type SyncedOutboxEntry = { entry: OutboxEntry; at: number }
+
+// Entries that left the queue after syncing, and when, for this session. Kept outside the views
+// so one opened after the sync (e.g. the dashboard right after adding) still shows the entry until
+// its own transactions refetch with the row (useTransactionsWithOutbox).
+let syncedEntries: SyncedOutboxEntry[] = []
+const syncedListeners = new Set<() => void>()
+const NO_SYNCED: SyncedOutboxEntry[] = []
+
+function subscribeSynced(listener: () => void) {
+  syncedListeners.add(listener)
+  return () => {
+    syncedListeners.delete(listener)
+  }
+}
+
+export function useSyncedOutboxEntries(): SyncedOutboxEntry[] {
+  return useSyncExternalStore(subscribeSynced, () => syncedEntries, () => NO_SYNCED)
+}
+
+// Mounted once, next to useOutboxSync, so entries are recorded whichever page is open. Entries of
+// another user or spreadsheet only leave the queue because the scope changed, so they aren't.
+export function useTrackSyncedOutboxEntries() {
+  const entries = useOutboxEntries()
+  const { userId } = useAuth()
+  const { spreadsheet } = useSpreadsheet()
+  const scope = useRef({ userId, spreadsheetId: spreadsheet?.id ?? null })
+  scope.current = { userId, spreadsheetId: spreadsheet?.id ?? null }
+  const previous = useRef<OutboxEntry[]>([])
+
+  useEffect(() => {
+    const { userId, spreadsheetId } = scope.current
+    const left = leftQueue(previous.current, entries).filter((entry) => entry.userId === userId && entry.spreadsheetId === spreadsheetId)
+    previous.current = entries
+    if (left.length === 0) return
+    const at = Date.now()
+    syncedEntries = [...syncedEntries, ...left.map((entry) => ({ entry, at }))]
+    syncedListeners.forEach((listener) => listener())
+  }, [entries])
 }
 
 function subscribeOnline(listener: () => void) {

@@ -11,7 +11,7 @@ import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurr
 import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import { enqueueTransaction, getKnownStoredIds, requestOutboxSync, setKnownStoredIds } from '@/lib/outbox'
 import { classifySyncError } from '@/lib/outbox-sync'
-import { useOutboxSync } from '@/hooks/use-outbox-sync'
+import { useOutboxSync, useTrackSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
@@ -307,6 +307,7 @@ export function FinanceDataProvider({ children }: { children: ReactNode }) {
   const isRestoring = persistScope !== null && restoredScope !== persistScope
 
   useOutboxSync({ enabled: mode === 'google', userId, spreadsheetId, accessToken, refreshSession })
+  useTrackSyncedOutboxEntries()
 
   // Restores the user's and spreadsheet's cached queries, then keeps them saved
   useEffect(() => {

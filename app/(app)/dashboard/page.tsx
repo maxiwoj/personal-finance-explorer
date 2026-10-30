@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfDay, format, startOfDay, startOfMonth, subMonths } from 'date-fns'
-import { useRecentTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
+import { useRecentTransactions, useDefaultCurrency, useTransactionsWithOutbox } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
@@ -116,7 +116,9 @@ function shiftComparisonPoints(
 
 export default function DashboardPage() {
   const defaultCurrency = useDefaultCurrency()
-  const { data: transactions, isLoading, error } = useRecentTransactions()
+  const { data, dataUpdatedAt, isLoading, error } = useRecentTransactions()
+  // Transactions saved on this device and not yet in the sheet are included too
+  const transactions = useTransactionsWithOutbox(data, dataUpdatedAt)
   const { filters, setSelectedCategories, setSelectedDateRange } = useFilters()
   const { selectedMonths, selectedYears, selectedCategories, selectedDateRange } = filters
   const [showPreviousMonth, setShowPreviousMonth] = useState(false)
