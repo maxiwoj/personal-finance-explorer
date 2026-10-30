@@ -8,11 +8,15 @@ import { Transaction } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Wallet, ArrowRight } from 'lucide-react'
 import { TransactionIndicators } from './transaction-indicators'
+import { RecurringDraftCard } from './recurring-drafts'
+import { draftTransactionId, type RecurringDraft } from '@/lib/recurring'
 
 interface RecentTransactionsCarouselProps {
   transactions: Transaction[]
   className?: string
   limit?: number
+  // Due recurring payments, shown first and marked as drafts to approve
+  drafts?: RecurringDraft[]
   onTransactionClick?: (transaction: Transaction) => void
 }
 
@@ -20,6 +24,7 @@ export function RecentTransactionsCarousel({
   transactions,
   className,
   limit = 3,
+  drafts = [],
   onTransactionClick,
 }: RecentTransactionsCarouselProps) {
   // Take the most recent transactions based on the limit
@@ -36,7 +41,7 @@ export function RecentTransactionsCarousel({
     }
   }
 
-  if (recentTransactions.length === 0) {
+  if (recentTransactions.length === 0 && drafts.length === 0) {
     return null
   }
 
@@ -58,6 +63,11 @@ export function RecentTransactionsCarousel({
       
       {/* Native horizontal scroll for better desktop/trackpad experience */}
       <div className="w-full overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory flex gap-3 scroll-smooth">
+        {drafts.map((draft) => (
+          <div key={draftTransactionId(draft)} className="basis-[85%] sm:basis-[45%] lg:basis-[30%] shrink-0 snap-start">
+            <RecurringDraftCard draft={draft} />
+          </div>
+        ))}
         {recentTransactions.map((transaction) => (
           <div 
             key={transaction.transactionId} 

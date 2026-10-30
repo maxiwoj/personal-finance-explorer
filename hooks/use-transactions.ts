@@ -85,6 +85,9 @@ export function useReloadFinanceData() {
       invalidations.push(queryClient.invalidateQueries({ queryKey: ['full-transactions', provider.mode] }))
     }
 
+    // Drafts show with both, and the tab may have been edited in the sheet
+    invalidations.push(queryClient.invalidateQueries({ queryKey: ['recurring-payments', provider.mode] }))
+
     await Promise.all(invalidations)
   }
 }

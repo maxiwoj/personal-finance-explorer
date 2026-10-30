@@ -150,11 +150,12 @@ export function dueDrafts(payments: RecurringPayment[], today: StartDate): Recur
     .sort((a, b) => compareDates(a.date, b.date))
 }
 
-// The transaction an approved draft adds, dated on its day
-export function draftTransaction(draft: Pick<RecurringDraft, 'payment' | 'date'>): TransactionInput {
+// The transaction an approved draft adds. Approved on its day, it gets the current time, so it is
+// the newest transaction like any just added; approved later, it is the last one of its day.
+export function draftTransaction(draft: Pick<RecurringDraft, 'payment' | 'date'>, now: Date): TransactionInput {
   const { payment, date } = draft
   return {
-    timestamp: new Date(date.year, date.month - 1, date.day),
+    timestamp: compareDates(date, dayOf(now)) === 0 ? now : new Date(date.year, date.month - 1, date.day, 23, 59, 59),
     what: payment.what,
     category: payment.category,
     amount: payment.amount,

@@ -89,10 +89,16 @@ describe('dueDrafts', () => {
 })
 
 describe('draftTransaction', () => {
-  it('is dated on the draft day with a stable ID', () => {
-    const draft = { payment: PAYMENT, date: d(2026, 2, 28) }
-    assert.deepEqual(draftTransaction(draft), { timestamp: new Date(2026, 1, 28), what: 'Rent', category: 'home', amount: 2500, currency: 'PLN' })
+  const draft = { payment: PAYMENT, date: d(2026, 2, 28) }
+
+  it('is the last transaction of a past day, with a stable ID', () => {
+    assert.deepEqual(draftTransaction(draft, new Date(2026, 2, 3, 9, 15)), { timestamp: new Date(2026, 1, 28, 23, 59, 59), what: 'Rent', category: 'home', amount: 2500, currency: 'PLN' })
     assert.equal(draftTransactionId(draft), 'rent-2026-02-28')
+  })
+
+  it('gets the current time when approved on its day', () => {
+    const now = new Date(2026, 1, 28, 9, 15, 30)
+    assert.deepEqual(draftTransaction(draft, now).timestamp, now)
   })
 })
 

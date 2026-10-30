@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfDay, format, startOfDay, startOfMonth, subMonths } from 'date-fns'
-import { useRecentTransactions, useDefaultCurrency, useTransactionsWithOutbox } from '@/hooks/use-transactions'
+import { useRecentTransactions, useDefaultCurrency, useRecurringDrafts, useTransactionsWithOutbox } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
@@ -119,6 +119,8 @@ export default function DashboardPage() {
   const { data, dataUpdatedAt, isLoading, error } = useRecentTransactions()
   // Transactions saved on this device and not yet in the sheet are included too
   const transactions = useTransactionsWithOutbox(data, dataUpdatedAt)
+  // Due recurring payments, shown first among the recent transactions until approved or removed
+  const drafts = useRecurringDrafts()
   const { filters, setSelectedCategories, setSelectedDateRange } = useFilters()
   const { selectedMonths, selectedYears, selectedCategories, selectedDateRange } = filters
   const [showPreviousMonth, setShowPreviousMonth] = useState(false)
@@ -277,6 +279,7 @@ export default function DashboardPage() {
       <RecentTransactionsCarousel 
         transactions={transactions || []} 
         limit={5} 
+        drafts={drafts}
         className="pb-2" 
         onTransactionClick={setSelectedTransaction}
       />

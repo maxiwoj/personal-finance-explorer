@@ -21,10 +21,12 @@ The transaction and the recurring payment are not linked: the payment only recor
 
 ## Drafts
 
-A payment is due once its next date is today or earlier. The **Transactions** page then shows it under **Draft transactions**, one draft per payment, with how many later dates are also due (e.g. after a few months away).
+A payment is due once its next date is today or earlier. It then shows as a draft, one per payment: first in **Recent Activity** on the dashboard, marked **Draft**, and under **Draft transactions** on the **Transactions** page. Each shows how many later dates are also due (e.g. after a few months away).
 
-- **Approve** adds the transaction to `expenses`, dated on the draft's day, and moves the payment to its next date. The next draft then shows if that date is due too.
+- **Approve** adds the transaction to `expenses` and moves the payment to its next date. The next draft then shows if that date is due too. Approved on its due day, the transaction gets the current time, so it is the newest one, like any you just added; approved later, it gets 23:59:59 on its due day, the last transaction of that day.
 - **Remove** moves the payment to its next date without adding a transaction.
+
+Drafts are refreshed with the rest of the data: **Refresh recent data** / **Reload all data** also re-read the `recurring` tab, so changes made in the sheet show at once. Otherwise it is re-read when a page needs it and the last read is more than 10 minutes old.
 
 Both need a connection. Before writing, the app re-reads the payment's row and refuses if it changed in the sheet (e.g. approved on another device); reload and try again.
 

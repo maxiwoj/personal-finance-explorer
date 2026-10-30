@@ -778,7 +778,7 @@ export async function deleteRecurringPayment(accessToken: string, spreadsheetId:
 export async function approveRecurringDraft(accessToken: string, spreadsheetId: string, draft: Pick<RecurringDraft, 'payment' | 'date'>): Promise<void> {
   const { payment, date } = draft
   const sheetRow = await findRecurringRow(accessToken, spreadsheetId, payment)
-  const input = draftTransaction(draft)
+  const input = draftTransaction(draft, new Date())
 
   if (await hasStoredIds(accessToken, spreadsheetId)) {
     const transactionId = draftTransactionId(draft)
