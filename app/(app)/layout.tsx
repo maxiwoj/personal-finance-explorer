@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
+import { useIsRestoring } from '@tanstack/react-query'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
@@ -22,7 +23,11 @@ export default function AppLayout({
   const { spreadsheet, accessError } = useSpreadsheet()
   const router = useRouter()
   const pathname = usePathname()
-  const hasSource = isAuthenticated && (mode === 'demo' || (!!spreadsheet && !accessError))
+  const isRestoring = useIsRestoring()
+  // At startup the stored Google session is refreshed in the background; the app shows cached
+  // data meanwhile, and its requests wait for the refresh
+  const hasSession = isAuthenticated || (isLoading && mode === 'google')
+  const hasSource = hasSession && (mode === 'demo' || (!!spreadsheet && !accessError))
   const categories = useCategories(hasSource)
   // Started together with categories instead of after the page mounts; not waited for here
   useCurrencies(hasSource)
@@ -38,8 +43,9 @@ export default function AppLayout({
     }
   }, [isAuthenticated, isLoading, router])
 
-  // Offline there's no token, so categories fail at once; waiting on them would remount the page into a refetch loop
-  if (isLoading || !isAuthenticated || (hasSource && !isOffline && categories.isLoading)) {
+  // Offline there's no token, so categories fail at once; waiting on them would remount the page into a refetch loop.
+  // With cached categories, categories.isLoading is false and nothing waits on the network.
+  if (!hasSession || (isLoading && !hasSource) || isRestoring || (hasSource && !isOffline && categories.isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner className="h-8 w-8" />

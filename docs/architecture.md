@@ -42,7 +42,7 @@ This document describes the high-level architecture of the Personal Finance Expl
 -   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, create or change the categories tab, or manage currencies.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
--   **IndexedDB**: The app uses IndexedDB (via `idb` library) for client-side caching to improve performance on subsequent loads.
+-   **IndexedDB**: The TanStack Query cache (categories, currencies, the rates' start, recent and full transactions) is saved per Google user and spreadsheet (`lib/cache.ts`, `lib/query-persistence.ts`) for up to 30 days. A launch shows it at once, also offline, and refreshes it in the background. It is cleared on sign-out and when the spreadsheet changes.
 
 ## Performance Optimizations
 

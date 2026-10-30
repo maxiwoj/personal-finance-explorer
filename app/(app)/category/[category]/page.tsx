@@ -56,7 +56,7 @@ export default function CategoryPage({ params }: CategoryPageProps) {
     )
   }
 
-  if (error) {
+  if (error && !transactions) {
     return (
       <Alert variant="destructive" className="max-w-lg mx-auto mt-10">
         <AlertCircle className="h-4 w-4" />

@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { DRIVE_FILE_SCOPE, GOOGLE_CLIENT_ID } from '@/lib/config'
 import { clearCache } from '@/lib/cache'
 import { clearStoredDemoTransactions } from '@/lib/demo-data'
@@ -41,6 +42,8 @@ interface AuthContextType {
   enterDemoMode: () => void
   signOut: () => void
   refreshSession: () => Promise<boolean>
+  // The refresh already running, if any (resolves to whether it succeeded); doesn't start one
+  pendingRefresh: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -107,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isExpiring, setIsExpiring] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const refreshInFlight = useRef<Promise<boolean> | null>(null)
+  const queryClient = useQueryClient()
 
   const clearAuthState = useCallback(() => {
     clearGoogleSession()
@@ -223,6 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return refreshInFlight.current
   }, [runRefresh])
 
+  const pendingRefresh = useCallback(() => refreshInFlight.current ?? Promise.resolve(false), [])
+
   useEffect(() => {
     if (!expiryTime || mode !== 'google') return
 
@@ -291,6 +297,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setExpiryTime(parseInt(storedExpiry!, 10))
         setIsLoading(false)
         return
+      }
+
+      // The stored user is shown while the refresh runs, so the app can render cached data;
+      // isAuthenticated stays false until it succeeds
+      if (storedMode === 'google') {
+        setMode('google')
+        setUserId(localStorage.getItem(USER_ID_KEY))
+        setEmail(localStorage.getItem(HINT_KEY))
       }
 
       // A rejected refresh clears the stored session; a network failure keeps it (see runRefresh)
@@ -412,13 +426,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void clearCache()
     setError(null)
     clearAuthState()
+    queryClient.clear()
 
     if (activeMode === 'google' && currentToken) {
       loadGoogleScript()
         .then(() => window.google?.accounts.oauth2.revoke(currentToken, () => undefined))
         .catch((e) => console.error('Revoke error:', e))
     }
-  }, [accessToken, clearAuthState, mode])
+  }, [accessToken, clearAuthState, mode, queryClient])
 
   return (
     <AuthContext.Provider
@@ -437,6 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         enterDemoMode,
         signOut,
         refreshSession,
+        pendingRefresh,
       }}
     >
       {children}

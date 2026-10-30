@@ -74,9 +74,3 @@ export type DescriptionTotal = {
   what: string
   total: number
 }
-
-export type CacheData = {
-  recent_transactions: Transaction[]
-  full_transactions: Transaction[]
-  last_sync_timestamp: number
-}

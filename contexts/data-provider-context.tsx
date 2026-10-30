@@ -1,10 +1,12 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { IsRestoringProvider, useQueryClient, type Query } from '@tanstack/react-query'
+import { persistQueryClientRestore, persistQueryClientSubscribe } from '@tanstack/react-query-persist-client'
 import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
-import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
+import { createQueryPersister } from '@/lib/cache'
+import { PERSIST_BUSTER, PERSIST_MAX_AGE_MS, persistScopeKey, shouldPersistQuery } from '@/lib/query-persistence'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
 import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
@@ -66,6 +68,7 @@ function buildGoogleProvider(
   spreadsheetId: string | null,
   pickedAt: number | null,
   refreshSession: () => Promise<boolean>,
+  pendingRefresh: () => Promise<boolean>,
   reportAccessError: (message: string) => void
 ): FinanceDataProvider {
   // Writes skip the post-pick retry and access-error reporting: a 403 on write usually means
@@ -75,6 +78,12 @@ function buildGoogleProvider(
     fetcher: (token: string, spreadsheetId: string) => Promise<T>,
     { isWrite = false } = {}
   ): Promise<T> => {
+    // At startup the stored session's refresh may still be running while cached data shows;
+    // the request waits for it instead of failing
+    if (!currentToken && await pendingRefresh()) {
+      currentToken = localStorage.getItem('pfe_access_token')
+    }
+
     if (!currentToken) {
       throw new Error('Not authenticated')
     }
@@ -127,42 +136,13 @@ function buildGoogleProvider(
     mode: 'google',
     sourceId: spreadsheetId,
     async getRecentTransactions() {
-      const cached = await getCachedRecentTransactions()
-
-      if (!accessToken) {
-        if (cached) return cached
-        throw new Error('Not authenticated')
-      }
-
-      const fresh = await fetchWithRefresh(accessToken, fetchRecentTransactions)
-      await setCachedRecentTransactions(fresh)
-      return fresh
+      return fetchWithRefresh(accessToken, fetchRecentTransactions)
     },
     async getFullTransactions() {
-      const cached = await getCachedFullTransactions()
-
-      if (!accessToken) {
-        if (cached) return cached
-        throw new Error('Not authenticated')
-      }
-
-      const fresh = await fetchWithRefresh(accessToken, fetchFullTransactions)
-      await setCachedFullTransactions(fresh)
-      return fresh
+      return fetchWithRefresh(accessToken, fetchFullTransactions)
     },
-    async reloadData(scope = 'all') {
-      if (scope === 'recent') {
-        await clearRecentTransactionsCache()
-        return
-      }
-
-      if (scope === 'full') {
-        await clearFullTransactionsCache()
-        return
-      }
-
-      await clearCache()
-    },
+    // Cached data is the query cache itself, which the caller invalidates
+    async reloadData() {},
     async addTransaction(input) {
       await fetchWithRefresh(accessToken, (token, id) => appendTransaction(token, id, input), { isWrite: true })
     },
@@ -176,9 +156,7 @@ function buildGoogleProvider(
       return fetchWithRefresh(accessToken, fetchCategories)
     },
     async getCategoriesAndRecent() {
-      const result = await fetchWithRefresh(accessToken, fetchCategoriesAndRecent)
-      if (result.recentTransactions) await setCachedRecentTransactions(result.recentTransactions)
-      return result
+      return fetchWithRefresh(accessToken, fetchCategoriesAndRecent)
     },
     async createCategoryList(categories) {
       await fetchWithRefresh(accessToken, (token, id) => createCategoriesSheet(token, id, categories), { isWrite: true })
@@ -275,12 +253,42 @@ function buildDemoProvider(): FinanceDataProvider {
 }
 
 export function FinanceDataProvider({ children }: { children: ReactNode }) {
-  const { mode, accessToken, isOffline, refreshSession } = useAuth()
+  const { mode, accessToken, userId, isOffline, refreshSession, pendingRefresh } = useAuth()
   const { spreadsheet, reportAccessError } = useSpreadsheet()
   const queryClient = useQueryClient()
   const spreadsheetId = spreadsheet?.id ?? null
   const pickedAt = spreadsheet?.pickedAt ?? null
   const wasOffline = useRef(isOffline)
+  const persistScope = mode === 'google' && userId && spreadsheetId ? persistScopeKey(userId, spreadsheetId) : null
+  const [restoredScope, setRestoredScope] = useState<string | null>(null)
+  // Queries don't fetch until the cached data is back, so they refresh it instead of racing it
+  const isRestoring = persistScope !== null && restoredScope !== persistScope
+
+  // Restores the user's and spreadsheet's cached queries, then keeps them saved
+  useEffect(() => {
+    if (!persistScope || !spreadsheetId) return
+    let active = true
+    let unsubscribe: (() => void) | undefined
+    const persister = createQueryPersister(persistScope)
+
+    const isPersisted = (query: Query) => shouldPersistQuery(query.queryKey, query.state.data !== undefined, spreadsheetId)
+
+    persistQueryClientRestore({ queryClient, persister, maxAge: PERSIST_MAX_AGE_MS, buster: PERSIST_BUSTER })
+      .catch((error) => console.error('Failed to restore cached data:', error))
+      .finally(() => {
+        if (!active) return
+        // The sheet may have changed since the last launch: restored data shows at once and
+        // refetches when used, even within its staleTime
+        void queryClient.invalidateQueries({ predicate: isPersisted, refetchType: 'none' })
+        unsubscribe = persistQueryClientSubscribe({ queryClient, persister, buster: PERSIST_BUSTER, dehydrateOptions: { shouldDehydrateQuery: isPersisted } })
+        setRestoredScope(persistScope)
+      })
+
+    return () => {
+      active = false
+      unsubscribe?.()
+    }
+  }, [persistScope, queryClient, spreadsheetId])
 
   // Queries that failed without a token while offline are retried once the token is back
   useEffect(() => {
@@ -295,10 +303,14 @@ export function FinanceDataProvider({ children }: { children: ReactNode }) {
       return buildDemoProvider()
     }
 
-    return buildGoogleProvider(accessToken, spreadsheetId, pickedAt, refreshSession, reportAccessError)
-  }, [accessToken, mode, pickedAt, refreshSession, reportAccessError, spreadsheetId])
+    return buildGoogleProvider(accessToken, spreadsheetId, pickedAt, refreshSession, pendingRefresh, reportAccessError)
+  }, [accessToken, mode, pendingRefresh, pickedAt, refreshSession, reportAccessError, spreadsheetId])
 
-  return <DataProviderContext.Provider value={provider}>{children}</DataProviderContext.Provider>
+  return (
+    <DataProviderContext.Provider value={provider}>
+      <IsRestoringProvider value={isRestoring}>{children}</IsRestoringProvider>
+    </DataProviderContext.Provider>
+  )
 }
 
 export function useFinanceDataProvider() {
