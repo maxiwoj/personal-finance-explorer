@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download, Repeat } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -112,6 +112,12 @@ export function Nav() {
           <Link href="/currencies" prefetch={prefetch}>
             <Coins className="h-4 w-4" />
             Currencies
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/recurring" prefetch={prefetch}>
+            <Repeat className="h-4 w-4" />
+            Recurring payments
           </Link>
         </DropdownMenuItem>
         {/* An installed iOS app has no reload gesture */}

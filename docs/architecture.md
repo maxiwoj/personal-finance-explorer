@@ -15,7 +15,8 @@ This document describes the high-level architecture of the Personal Finance Expl
 8.  **Returns**: A return is a row with a negative amount whose ReturnOf holds the purchase's TransactionID. `linkReturns` (`lib/returns.ts`) folds returns into their purchase when transactions are read, so analytics see the purchase at its net amount in its own month and category.
 9.  **Categories**: The optional `categories` tab is read once per session (`useCategories`). It sets the order of category buttons on the Add page (rows marked hidden in column C are left out there) and seeds `lib/colors.ts` so each category keeps the same color everywhere.
 10. **Currencies**: The optional `currencyDates` tab is read once per session (`useCurrencies`, `lib/currencies.ts`). Its B1 is the default currency every amount is shown in; its column pairs are the currencies offered on the Add page. The Currencies page writes new pairs (code, column numbers and a formula generated for the pair's columns), changes a custom currency's multiplier, swaps the default with another currency, and clears unused pairs. Rows with an empty Currency cell are read as the default currency (`resolveDefaultCurrency`). See [Currencies](./currencies.md).
-11. **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
+11. **Recurring payments**: The optional `recurring` tab (`lib/recurring.ts`) holds one payment per row with its schedule and next date; the Recurring payments page adds, edits and deletes rows, creating the tab with the first one. Due payments are worked out on the device (`dueDrafts`) and shown on the Transactions page as drafts. Approving one appends the transaction (with an ID made from the payment and the date, so a retry never adds it twice) and moves the next date on; removing one only moves the date. See [Recurring payments](./recurring-payments.md).
+12. **Filtering**: The `FilterContext` manages the global filter state (date range, categories, etc.), which is used by hooks like `useTransactions` to provide filtered views of the data.
 
 ## Tech Stack
 
@@ -39,10 +40,10 @@ This document describes the high-level architecture of the Personal Finance Expl
 
 ## Storage & Privacy
 
--   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, create or change the categories tab, or manage currencies.
+-   **Google Sheets**: All your financial data stays in your own Google Spreadsheet. The app writes only when you add, edit, return or delete a transaction, create or change the categories tab, manage currencies, or manage or approve recurring payments.
 -   **Cookies**: The app stores a secure refresh token in your browser to keep you logged in.
 -   **localStorage**: The selected spreadsheet (ID and name) per Google account, plus the short-lived access token.
--   **IndexedDB**: The TanStack Query cache (categories, currencies, the rates' start, recent and full transactions) is saved per Google user and spreadsheet (`lib/cache.ts`, `lib/query-persistence.ts`) for up to 30 days. A launch shows it at once, also offline, and refreshes it in the background. It is cleared on sign-out and when the spreadsheet changes.
+-   **IndexedDB**: The TanStack Query cache (categories, currencies, the rates' start, recent and full transactions, recurring payments) is saved per Google user and spreadsheet (`lib/cache.ts`, `lib/query-persistence.ts`) for up to 30 days. A launch shows it at once, also offline, and refreshes it in the background. It is cleared on sign-out and when the spreadsheet changes.
 -   **IndexedDB (outbox)**: New transactions wait in their own database (`finance-explorer-outbox`, `lib/outbox.ts`) per Google user and spreadsheet until they're appended to the sheet (`lib/outbox-sync.ts`, `hooks/use-outbox-sync.ts`). It is not cleared on sign-out, so unsynced transactions survive it and sync after the same user signs in again.
 -   **Service worker cache**: The pages, JS, CSS, fonts and `public/` files of the current version (`app/sw.ts`), so the installed app loads offline. No API or Google responses. See [Install as an App](./deployment.md#6-install-as-an-app-offline).
 

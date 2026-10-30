@@ -8,6 +8,7 @@ import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { useOutboxEntries, useSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
 import { mergeOutbox } from '@/lib/outbox-view'
 import { resolveDefaultCurrency, type ExtendResult, type RatesStart, type StartDate } from '@/lib/currencies'
+import { dayOf, dueDrafts, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from '@/lib/recurring'
 import { linkReturns } from '@/lib/returns'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
@@ -262,6 +263,57 @@ export function useRatesStartActions() {
     revertRates: async (extendedStart: StartDate, previousStart: StartDate) => {
       await provider.revertRates(extendedStart, previousStart)
       await reload()
+    },
+  }
+}
+
+export function useRecurringPayments(enabled = true) {
+  const provider = useFinanceDataProvider()
+
+  return useQuery<RecurringPayment[] | null>({
+    queryKey: ['recurring-payments', provider.mode, provider.sourceId],
+    queryFn: provider.getRecurringPayments,
+    staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
+    enabled,
+  })
+}
+
+// Payments due today or earlier, waiting to be approved or removed
+export function useRecurringDrafts(): RecurringDraft[] {
+  const { data } = useRecurringPayments()
+  const today = dayOf(new Date())
+  const todayKey = `${today.year}-${today.month}-${today.day}`
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recomputed when the day changes, not on every render
+  return useMemo(() => dueDrafts(data ?? [], today), [data, todayKey])
+}
+
+export function useRecurringActions() {
+  const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
+  const afterWrite = useAfterWrite()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['recurring-payments', provider.mode] })
+
+  return {
+    addRecurringPayment: async (input: RecurringPaymentInput) => {
+      await provider.addRecurringPayment(input)
+      await invalidate()
+    },
+    updateRecurringPayment: async (original: RecurringPayment, input: RecurringPaymentInput) => {
+      await provider.updateRecurringPayment(original, input)
+      await invalidate()
+    },
+    deleteRecurringPayment: async (original: RecurringPayment) => {
+      await provider.deleteRecurringPayment(original)
+      await invalidate()
+    },
+    // The new transaction shows once the transactions are refetched
+    approveRecurringDraft: async (draft: RecurringDraft) => {
+      await provider.approveRecurringDraft(draft)
+      await Promise.all([invalidate(), afterWrite()])
+    },
+    skipRecurringDraft: async (draft: RecurringDraft) => {
+      await provider.skipRecurringDraft(draft)
+      await invalidate()
     },
   }
 }

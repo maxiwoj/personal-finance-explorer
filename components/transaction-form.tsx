@@ -48,7 +48,7 @@ function toDateTimeLocal(date: Date) {
 }
 
 // Most frequent first, so the usual picks are the first chips
-function byFrequency(values: string[]) {
+export function byFrequency(values: string[]) {
   const counts = new Map<string, number>()
   values.forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1))
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => value)
@@ -112,7 +112,7 @@ interface ChipPickerProps {
 }
 
 // One tap selects an option; "New" reveals a text field for values not used before
-function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
+export function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
   const [showAll, setShowAll] = useState(false)
 

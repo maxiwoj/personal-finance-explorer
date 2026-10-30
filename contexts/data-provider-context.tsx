@@ -8,12 +8,13 @@ import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { createQueryPersister } from '@/lib/cache'
 import { PERSIST_BUSTER, PERSIST_MAX_AGE_MS, persistScopeKey, shouldPersistQuery } from '@/lib/query-persistence'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, addRecurringPayment, appendCategory, approveRecurringDraft, deleteRecurringPayment, fetchRecurringPayments, skipRecurringDraft, updateRecurringPayment, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import { enqueueTransaction, getKnownStoredIds, requestOutboxSync, setKnownStoredIds } from '@/lib/outbox'
 import { classifySyncError } from '@/lib/outbox-sync'
 import { useOutboxSync, useTrackSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
+import type { RecurringDraft, RecurringPayment, RecurringPaymentInput } from '@/lib/recurring'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
@@ -53,6 +54,15 @@ export interface FinanceDataProvider {
   extendRates: (newStart: StartDate) => Promise<ExtendResult>
   // Undoes extendRates, while the formulas still start on extendedStart
   revertRates: (extendedStart: StartDate, previousStart: StartDate) => Promise<void>
+  // null when the source has no recurring tab; adding the first payment creates it
+  getRecurringPayments: () => Promise<RecurringPayment[] | null>
+  addRecurringPayment: (input: RecurringPaymentInput) => Promise<void>
+  updateRecurringPayment: (original: RecurringPayment, input: RecurringPaymentInput) => Promise<void>
+  deleteRecurringPayment: (original: RecurringPayment) => Promise<void>
+  // Adds a due payment as a transaction and moves the payment to its next date
+  approveRecurringDraft: (draft: RecurringDraft) => Promise<void>
+  // Moves the payment to its next date without adding a transaction
+  skipRecurringDraft: (draft: RecurringDraft) => Promise<void>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -230,6 +240,24 @@ function buildGoogleProvider(
     async revertRates(extendedStart, previousStart) {
       await fetchWithRefresh(accessToken, (token, id) => revertRates(token, id, extendedStart, previousStart), { isWrite: true })
     },
+    async getRecurringPayments() {
+      return fetchWithRefresh(accessToken, fetchRecurringPayments)
+    },
+    async addRecurringPayment(input) {
+      await fetchWithRefresh(accessToken, (token, id) => addRecurringPayment(token, id, input), { isWrite: true })
+    },
+    async updateRecurringPayment(original, input) {
+      await fetchWithRefresh(accessToken, (token, id) => updateRecurringPayment(token, id, original, input), { isWrite: true })
+    },
+    async deleteRecurringPayment(original) {
+      await fetchWithRefresh(accessToken, (token, id) => deleteRecurringPayment(token, id, original), { isWrite: true })
+    },
+    async approveRecurringDraft(draft) {
+      await fetchWithRefresh(accessToken, (token, id) => approveRecurringDraft(token, id, draft), { isWrite: true })
+    },
+    async skipRecurringDraft(draft) {
+      await fetchWithRefresh(accessToken, (token, id) => skipRecurringDraft(token, id, draft), { isWrite: true })
+    },
   }
 }
 
@@ -290,6 +318,24 @@ function buildDemoProvider(): FinanceDataProvider {
     },
     async revertRates() {
       throw new Error(demoModeMessage('Reverting the rates'))
+    },
+    async getRecurringPayments() {
+      return null
+    },
+    async addRecurringPayment() {
+      throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async updateRecurringPayment() {
+      throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async deleteRecurringPayment() {
+      throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async approveRecurringDraft() {
+      throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async skipRecurringDraft() {
+      throw new Error(demoModeMessage('Recurring payments'))
     },
   }
 }

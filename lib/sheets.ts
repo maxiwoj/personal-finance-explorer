@@ -1,5 +1,6 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
+import { draftTransaction, draftTransactionId, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
 import { recordedAmount } from './returns'
 import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
@@ -663,4 +664,136 @@ export async function setCategoryHidden(accessToken: string, spreadsheetId: stri
     method: 'POST',
     body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
   })
+}
+
+// The recurring tab is read with dates as serial numbers, so the sheet's locale does not matter;
+// null when the spreadsheet has no recurring tab yet
+export async function fetchRecurringPayments(accessToken: string, spreadsheetId: string): Promise<RecurringPayment[] | null> {
+  const range = `${SHEETS.RECURRING}!A:J`
+  let data: { values?: unknown[][] }
+
+  try {
+    data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`)
+  } catch (error) {
+    if (isMissingTab(error)) return null
+    throw error
+  }
+
+  return parseRecurringRows(data.values || [])
+}
+
+// Dates are written as YYYY-MM-DD, which USER_ENTERED turns into dates in every locale
+function toRecurringRow(payment: RecurringPayment): (string | number)[] {
+  return [
+    asText(payment.id),
+    asText(payment.what),
+    asText(payment.category),
+    payment.amount,
+    asText(payment.currency),
+    payment.every,
+    payment.unit,
+    isoDate(payment.start),
+    isoDate(payment.next),
+    payment.end ? isoDate(payment.end) : '',
+  ]
+}
+
+export async function addRecurringPayment(accessToken: string, spreadsheetId: string, input: RecurringPaymentInput): Promise<void> {
+  const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
+
+  if (await fetchRecurringPayments(accessToken, spreadsheetId) === null) {
+    await sheetsRequest(accessToken, `${spreadsheetUrl}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SHEETS.RECURRING } } }] }),
+    })
+    await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.RECURRING}!A1`)}?valueInputOption=RAW`, {
+      method: 'PUT',
+      body: JSON.stringify({ values: [RECURRING_HEADER] }),
+    })
+  }
+
+  const payment = { ...input, id: crypto.randomUUID(), next: input.start }
+  await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.RECURRING}!A:J`)}:append?valueInputOption=USER_ENTERED`, {
+    method: 'POST',
+    body: JSON.stringify({ values: [toRecurringRow(payment)] }),
+  })
+}
+
+// The payment's sheet row, re-read to make sure it still holds what the user saw; otherwise the
+// write aborts, as for transactions
+async function findRecurringRow(accessToken: string, spreadsheetId: string, original: RecurringPayment) {
+  const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
+  const ids = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.RECURRING}!A:A`)}`)
+  const matches = rowsWithId(ids.values || [], original.id)
+
+  if (matches.length === 0) {
+    throw new Error('This recurring payment was not found in the spreadsheet. Reload and try again.')
+  }
+  if (matches.length > 1) {
+    throw new Error('Several rows share this recurring payment ID. Edit it directly in the spreadsheet.')
+  }
+
+  const sheetRow = matches[0] + 1
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.RECURRING}!A${sheetRow}:J${sheetRow}`)}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`)
+  const [parsed] = parseRecurringRows(current.values || [])
+
+  if (!parsed || !sameRecurringPayment(parsed, original)) {
+    throw new Error('This recurring payment changed in the spreadsheet. Reload and try again.')
+  }
+
+  return sheetRow
+}
+
+async function writeRecurringRow(accessToken: string, spreadsheetId: string, sheetRow: number, payment: RecurringPayment) {
+  const range = `${SHEETS.RECURRING}!A${sheetRow}:J${sheetRow}`
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [toRecurringRow(payment)] }),
+  })
+}
+
+// Payments already approved or removed stay handled under the new schedule (rescheduledNext)
+export async function updateRecurringPayment(accessToken: string, spreadsheetId: string, original: RecurringPayment, input: RecurringPaymentInput): Promise<void> {
+  const sheetRow = await findRecurringRow(accessToken, spreadsheetId, original)
+  await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...input, id: original.id, next: rescheduledNext(original.next, input) })
+}
+
+// Transactions it already added stay
+export async function deleteRecurringPayment(accessToken: string, spreadsheetId: string, original: RecurringPayment): Promise<void> {
+  const sheetRow = await findRecurringRow(accessToken, spreadsheetId, original)
+  const { sheetId } = await fetchSheetGrid(accessToken, spreadsheetId, SHEETS.RECURRING)
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: sheetRow - 1, endIndex: sheetRow } } }],
+    }),
+  })
+}
+
+// Adds the draft as a transaction, then moves the payment to its next date. The transaction's ID
+// comes from the payment and the date, so a retry after a failed second step doesn't add it twice.
+// Sheets with formula IDs get no ID and no such check.
+export async function approveRecurringDraft(accessToken: string, spreadsheetId: string, draft: Pick<RecurringDraft, 'payment' | 'date'>): Promise<void> {
+  const { payment, date } = draft
+  const sheetRow = await findRecurringRow(accessToken, spreadsheetId, payment)
+  const input = draftTransaction(draft)
+
+  if (await hasStoredIds(accessToken, spreadsheetId)) {
+    const transactionId = draftTransactionId(draft)
+    if (!await transactionIdExists(accessToken, spreadsheetId, transactionId)) {
+      await appendQueuedTransaction(accessToken, spreadsheetId, input, transactionId)
+    }
+  } else {
+    await appendTransaction(accessToken, spreadsheetId, input)
+  }
+
+  await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...payment, next: occurrenceAfter(payment, date) })
+}
+
+// Moves the payment to its next date without adding a transaction
+export async function skipRecurringDraft(accessToken: string, spreadsheetId: string, draft: Pick<RecurringDraft, 'payment' | 'date'>): Promise<void> {
+  const { payment, date } = draft
+  const sheetRow = await findRecurringRow(accessToken, spreadsheetId, payment)
+  await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...payment, next: occurrenceAfter(payment, date) })
 }
