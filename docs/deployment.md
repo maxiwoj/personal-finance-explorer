@@ -165,6 +165,8 @@ The service worker (`app/sw.ts`, built with [Serwist](https://serwist.pages.dev)
 
 New transactions are saved on the device first and appended to the sheet in the background: at launch, when the network comes back and when the app is reopened. Each keeps the time it was saved and the TransactionID made then, which is checked before a retry so a lost response never adds a row twice. Returns, edits, deletes and sheets whose TransactionID is a formula still need the network. To save offline, the app must have opened the spreadsheet online once on that device.
 
+Until they're in the sheet, these transactions are listed in **Transactions**, marked with a cloud icon. A bar under the nav shows how many are waiting (**Sync now**) or failed (**Retry**, **View**); a failed one's details give the reason and let you retry it, copy its details or delete it. Signing out with unsynced transactions asks first; they stay on the device for that account and spreadsheet and sync after signing back in.
+
 ### Updates
 - Every deployment produces a new service worker. The app checks for one when it comes back to the foreground, and from **Account menu → Check for updates** (an installed iOS app has no pull-to-refresh).
 - The new version downloads in the background. With no unsaved input in a form it's applied at once (the page reloads); otherwise the nav shows **New version – Reload**.
