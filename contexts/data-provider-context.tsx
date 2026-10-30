@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { clearCache, clearFullTransactionsCache, clearRecentTransactionsCache, getCachedFullTransactions, getCachedRecentTransactions, setCachedFullTransactions, setCachedRecentTransactions } from '@/lib/cache'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
@@ -24,6 +24,8 @@ export interface FinanceDataProvider {
   deleteTransaction: (original: Transaction) => Promise<void>
   // null when the source has no category list (no categories tab, or demo mode)
   getCategories: () => Promise<CategoryDefinition[] | null>
+  // Both in one request, for the first load; recentTransactions is null when it has to be fetched on its own
+  getCategoriesAndRecent: () => Promise<{ categories: CategoryDefinition[] | null; recentTransactions: Transaction[] | null }>
   createCategoryList: (categories: CategoryDefinition[]) => Promise<void>
   addCategory: (name: string) => Promise<void>
   // Hides or shows a category on the Add page; showing one not in the list adds it
@@ -172,6 +174,11 @@ function buildGoogleProvider(
     async getCategories() {
       return fetchWithRefresh(accessToken, fetchCategories)
     },
+    async getCategoriesAndRecent() {
+      const result = await fetchWithRefresh(accessToken, fetchCategoriesAndRecent)
+      if (result.recentTransactions) await setCachedRecentTransactions(result.recentTransactions)
+      return result
+    },
     async createCategoryList(categories) {
       await fetchWithRefresh(accessToken, (token, id) => createCategoriesSheet(token, id, categories), { isWrite: true })
     },
@@ -229,6 +236,10 @@ function buildDemoProvider(): FinanceDataProvider {
     deleteTransaction: deleteDemoTransaction,
     async getCategories() {
       return null
+    },
+    // Demo data is local, so there is no round trip to save
+    async getCategoriesAndRecent() {
+      return { categories: null, recentTransactions: null }
     },
     async createCategoryList() {
       throw new Error(demoModeMessage('Managing categories'))

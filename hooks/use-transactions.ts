@@ -107,10 +107,20 @@ export function useDeleteTransaction() {
 
 export function useCategories(enabled = true) {
   const provider = useFinanceDataProvider()
+  const queryClient = useQueryClient()
 
   return useQuery<CategoryDefinition[] | null>({
     queryKey: ['categories', provider.mode, provider.sourceId],
-    queryFn: provider.getCategories,
+    // On the first load, recent transactions come in the same request, saving a round trip
+    // before the Add form and the dashboard can show
+    queryFn: async () => {
+      const recentKey = ['recent-transactions', provider.mode, provider.sourceId]
+      if (queryClient.getQueryData(recentKey) !== undefined) return provider.getCategories()
+
+      const { categories, recentTransactions } = await provider.getCategoriesAndRecent()
+      if (recentTransactions) queryClient.setQueryData(recentKey, recentTransactions)
+      return categories
+    },
     staleTime: provider.mode === 'demo' ? Infinity : 10 * 60 * 1000,
     enabled,
   })

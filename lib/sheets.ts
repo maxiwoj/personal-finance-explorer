@@ -1,6 +1,7 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { recordedAmount } from './returns'
+import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
@@ -10,132 +11,7 @@ export class SheetsApiError extends Error {
   }
 }
 
-function parseTimestamp(timestampStr: string): Date {
-  // Always try DD/MM/YYYY format first (European format)
-  // Match: DD/MM/YYYY with optional time (any separator: space, T, or nothing)
-  // Time formats: HH:MM, HH:MM:SS, H:MM, H:MM:SS
-  const dateTimeMatch = timestampStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/)
-  if (dateTimeMatch) {
-    const [, day, month, year, hours, minutes, seconds] = dateTimeMatch
-    return new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-      hours ? parseInt(hours) : 0,
-      minutes ? parseInt(minutes) : 0,
-      seconds ? parseInt(seconds) : 0
-    )
-  }
-  
-  // Try ISO format (e.g., 2024-03-15T10:30:00 or 2024-03-15 10:30:00)
-  const isoMatch = timestampStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:[\sT]+(\d{2}):(\d{2})(?::(\d{2}))?)?/)
-  if (isoMatch) {
-    const [, year, month, day, hours, minutes, seconds] = isoMatch
-    return new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-      hours ? parseInt(hours) : 0,
-      minutes ? parseInt(minutes) : 0,
-      seconds ? parseInt(seconds) : 0
-    )
-  }
-  
-  // Last resort fallback - try native parsing
-  const fallbackDate = new Date(timestampStr)
-  if (!isNaN(fallbackDate.getTime())) {
-    return fallbackDate
-  }
-  
-  // Return current date if nothing works
-  console.error('Failed to parse date:', timestampStr)
-  return new Date()
-}
-
-export function parseMoney(value: string | undefined): number | null {
-  if (!value) return null
-  
-  // Clean the string:
-  // 1. Replace special minus sign − (U+2212) with standard hyphen -
-  // 2. Remove any characters that are not digits, commas, dots, or the leading minus sign
-  // 3. Keep the minus sign only if it's at the beginning
-  
-  let cleaned = value.trim().replace(/−/g, '-')
-  
-  // If there are multiple minus signs or it's not at the start, this is weird but let's be safe
-  const isNegative = cleaned.startsWith('-')
-  
-  // Remove everything except digits, dots and commas
-  cleaned = cleaned.replace(/[^\d.,]/g, '')
-  
-  if (!cleaned) return null
-  
-  // Handle decimal separator
-  // If there's both a comma and a dot, the last one is likely the decimal separator
-  const lastComma = cleaned.lastIndexOf(',')
-  const lastDot = cleaned.lastIndexOf('.')
-  
-  if (lastComma > lastDot) {
-    // Comma is decimal separator (e.g. 1.234,56 or 1234,56)
-    // Remove dots (thousands separators) and replace comma with dot
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.')
-  } else if (lastDot > lastComma) {
-    // Dot is decimal separator (e.g. 1,234.56 or 1234.56)
-    // Remove commas (thousands separators)
-    cleaned = cleaned.replace(/,/g, '')
-  } else {
-    // Only one type of separator or none. 
-    // If it's a comma, it might be a decimal separator (European) or thousands (US)
-    // In the context of PLN, it's very likely a decimal separator.
-    // However, if it's followed by exactly 3 digits, it *might* be thousands.
-    // But let's assume if there's only one, it's a decimal separator if it's towards the end.
-    if (lastComma !== -1) {
-      cleaned = cleaned.replace(',', '.')
-    }
-  }
-  
-  const parsed = parseFloat(cleaned)
-  if (isNaN(parsed)) return null
-  
-  return isNegative ? -parsed : parsed
-}
-
-function parseRow(row: string[]): Transaction | null {
-  try {
-    if (row.length < 7) return null
-    
-    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID, Notes, ReturnOf
-    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId, notes, returnOf] = row
-    
-    if (!timestamp || !what || !category) return null
-    
-    const parsedTimestamp = parseTimestamp(timestamp)
-    
-    // Generate monthYear from timestamp if not provided
-    const derivedMonthYear = monthYear?.trim() || 
-      `${parsedTimestamp.getMonth() + 1}_${parsedTimestamp.getFullYear()}`
-    
-    const pAmountOriginal = parseMoney(amount) || 0
-    const pAmountPLN = parseMoney(amountPLN)
-    
-    return {
-      timestamp: parsedTimestamp,
-      what: what.trim(),
-      category: category.trim().toLowerCase(),
-      amountOriginal: pAmountOriginal,
-      // Empty means the default currency, which resolveDefaultCurrency fills in once it is known
-      currency: currency?.trim() ?? '',
-      amountPLN: pAmountPLN !== null ? pAmountPLN : pAmountOriginal,
-      monthYear: derivedMonthYear,
-      monthName: '', // Not used - derive from timestamp when needed
-      transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`,
-      notes: notes?.trim() ?? '',
-      returnOf: returnOf?.trim() ?? '',
-    }
-  } catch {
-    return null
-  }
-}
+export { parseMoney } from './sheet-rows'
 
 export async function fetchSheetData(
   accessToken: string,
@@ -165,16 +41,7 @@ export async function fetchSheetData(
   }
   
   const data = await response.json()
-  const rows: string[][] = data.values || []
-  
-  // Skip header row if present
-  const dataRows = rows.length > 0 && rows[0][0]?.toLowerCase().includes('timestamp')
-    ? rows.slice(1)
-    : rows
-  
-  return dataRows
-    .map(parseRow)
-    .filter((t): t is Transaction => t !== null)
+  return parseTransactionRows(data.values || [])
 }
 
 export async function fetchRecentTransactions(accessToken: string, spreadsheetId: string): Promise<Transaction[]> {
@@ -428,8 +295,6 @@ function isMissingTab(error: unknown) {
   return error instanceof SheetsApiError && error.status === 400 && /unable to parse range/i.test(error.message)
 }
 
-const HEX_COLOR = /^#[0-9a-f]{6}$/i
-
 // null when the spreadsheet has no categories tab, so callers fall back to derived categories
 export async function fetchCategories(accessToken: string, spreadsheetId: string): Promise<CategoryDefinition[] | null> {
   const range = `${SHEETS.CATEGORIES}!A:C`
@@ -442,22 +307,34 @@ export async function fetchCategories(accessToken: string, spreadsheetId: string
     throw error
   }
 
-  const rows = data.values || []
-  const seen = new Set<string>()
+  return parseCategoryRows(data.values || [])
+}
 
-  return rows
-    .filter((row, index) => !(index === 0 && /^categor(y|ies)$/i.test(row[0]?.trim() ?? '')))
-    .map(([name, color, hidden]) => ({
-      name: name?.trim().toLowerCase() ?? '',
-      color: color && HEX_COLOR.test(color.trim()) ? color.trim() : null,
-      // Any value hides it, except FALSE, so a checkbox column works too
-      hidden: !!hidden?.trim() && !/^false$/i.test(hidden.trim()),
-    }))
-    .filter(({ name }) => {
-      if (!name || seen.has(name)) return false
-      seen.add(name)
-      return true
-    })
+// categories and expenses2 in one values:batchGet, the data every page needs first. currencyDates
+// can't join: it is read with valueRenderOption=FORMULA, which would return expenses2's formula
+// instead of its rows. recentTransactions is null when it couldn't be read here; the caller then
+// fetches it on its own, which reports the error.
+export async function fetchCategoriesAndRecent(accessToken: string, spreadsheetId: string): Promise<{
+  categories: CategoryDefinition[] | null
+  recentTransactions: Transaction[] | null
+}> {
+  const params = new URLSearchParams()
+  params.append('ranges', `${SHEETS.CATEGORIES}!A:C`)
+  params.append('ranges', `${SHEETS.RECENT}!A:J`)
+
+  try {
+    const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchGet?${params}`)
+    return parseCategoriesAndRecent(data.valueRanges)
+  } catch (error) {
+    // The whole batch fails when one tab is missing, usually the optional categories tab
+    if (!isMissingTab(error)) throw error
+  }
+
+  const [categories, recentTransactions] = await Promise.all([
+    fetchCategories(accessToken, spreadsheetId),
+    fetchRecentTransactions(accessToken, spreadsheetId).catch(() => null),
+  ])
+  return { categories, recentTransactions }
 }
 
 export async function appendCategory(accessToken: string, spreadsheetId: string, name: string): Promise<void> {

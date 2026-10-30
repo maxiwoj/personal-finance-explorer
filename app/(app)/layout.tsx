@@ -9,7 +9,7 @@ import { Nav } from '@/components/nav'
 import { Footer } from '@/components/footer'
 import { SpreadsheetSetup } from '@/components/spreadsheet-setup'
 import { Spinner } from '@/components/ui/spinner'
-import { useCategories } from '@/hooks/use-transactions'
+import { useCategories, useCurrencies } from '@/hooks/use-transactions'
 import { setCategoryPalette } from '@/lib/colors'
 import { Plus } from 'lucide-react'
 
@@ -24,6 +24,8 @@ export default function AppLayout({
   const pathname = usePathname()
   const hasSource = isAuthenticated && (mode === 'demo' || (!!spreadsheet && !accessError))
   const categories = useCategories(hasSource)
+  // Started together with categories instead of after the page mounts; not waited for here
+  useCurrencies(hasSource)
 
   // Seeded before pages render so every chart, table and chip uses the same fixed colors
   useMemo(() => {
