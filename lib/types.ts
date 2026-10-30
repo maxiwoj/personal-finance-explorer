@@ -16,6 +16,9 @@ export type Transaction = {
   notes?: string
   // Column J: on a return, the TransactionID of the purchase it (partly) returns; empty otherwise
   returnOf?: string
+  // Column K: the recurring payment and date it is, "<payment ID>@YYYY-MM-DD" (lib/recurring.ts);
+  // empty when it isn't recurring
+  recurring?: string
   // Set by linkReturns on a purchase with returns: amountOriginal and amountPLN are then net of
   // them, and recorded holds the purchase's own amounts as in the sheet
   returns?: Transaction[]
@@ -61,6 +64,8 @@ export type TransactionInput = {
   notes?: string
   // Only set when recording a return: the TransactionID of the purchase
   returnOf?: string
+  // Only set for a recurring payment's transaction: written to column K
+  recurring?: string
 }
 
 export type CategoryTotal = {

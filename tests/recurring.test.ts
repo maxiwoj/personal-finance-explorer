@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { nextAfterToday, recurringSourceOf, draftTransaction, draftTransactionId, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
+import { nextAfterToday, recurringSourceOf, draftTransaction, draftLink, parseOccurrenceLink, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
 
 const d = (year: number, month: number, day: number) => ({ year, month, day })
 
@@ -93,7 +93,7 @@ describe('draftTransaction', () => {
 
   it('is the last transaction of a past day, with a stable ID', () => {
     assert.deepEqual(draftTransaction(draft, new Date(2026, 2, 3, 9, 15)), { timestamp: new Date(2026, 1, 28, 23, 59, 59), what: 'Rent', category: 'home', amount: 2500, currency: 'PLN' })
-    assert.equal(draftTransactionId(draft), 'rent-2026-02-28')
+    assert.equal(draftLink(draft), 'rent@2026-02-28')
   })
 
   it('gets the current time when approved on its day', () => {
@@ -102,11 +102,18 @@ describe('draftTransaction', () => {
   })
 })
 
-describe('recurringSourceOf', () => {
-  it('finds the payment an approved draft came from', () => {
-    assert.equal(recurringSourceOf('rent-2026-02-28', [PAYMENT]), PAYMENT)
-    assert.equal(recurringSourceOf('rent', [PAYMENT]), null)
-    assert.equal(recurringSourceOf('other-2026-02-28', [PAYMENT]), null)
+describe('occurrence links', () => {
+  it('parses a link, also with dashes in the payment ID', () => {
+    assert.deepEqual(parseOccurrenceLink('a-b-c@2026-02-28'), { paymentId: 'a-b-c', date: d(2026, 2, 28) })
+    assert.equal(parseOccurrenceLink('rent'), null)
+    assert.equal(parseOccurrenceLink('rent@2026-02-30'), null)
+    assert.equal(parseOccurrenceLink(undefined), null)
+  })
+
+  it('finds the payment a transaction belongs to', () => {
+    assert.equal(recurringSourceOf('rent@2026-02-28', [PAYMENT]), PAYMENT)
+    assert.equal(recurringSourceOf('other@2026-02-28', [PAYMENT]), null)
+    assert.equal(recurringSourceOf('', [PAYMENT]), null)
   })
 })
 

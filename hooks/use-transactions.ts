@@ -298,8 +298,14 @@ export function useRecurringActions() {
 
   return {
     addRecurringPayment: async (input: RecurringPaymentInput, next?: StartDate) => {
-      await provider.addRecurringPayment(input, next)
+      const id = await provider.addRecurringPayment(input, next)
       await invalidate()
+      return id
+    },
+    // The transaction then shows as recurring once the transactions are refetched
+    linkTransactionToRecurring: async (original: Transaction, link: string) => {
+      await provider.linkTransactionToRecurring(original, link)
+      await afterWrite()
     },
     updateRecurringPayment: async (original: RecurringPayment, input: RecurringPaymentInput) => {
       await provider.updateRecurringPayment(original, input)

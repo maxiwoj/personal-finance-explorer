@@ -47,6 +47,7 @@ export function outboxTransaction(entry: OutboxEntry, amountPLN: number, unsynce
     transactionId: entry.id,
     notes: entry.input.notes ?? '',
     returnOf: '',
+    recurring: entry.input.recurring ?? '',
     ...(unsynced ? { unsynced: { status: entry.status, error: entry.lastError } } : {}),
   }
 }

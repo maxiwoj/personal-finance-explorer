@@ -6,7 +6,7 @@ import { getCategoryColor } from '@/lib/colors'
 import { TransactionDetailModal } from './transaction-detail-modal'
 import { TransactionIndicators } from './transaction-indicators'
 import { DraftBadge, RecurringDraftDialog } from './recurring-drafts'
-import { draftTransactionId, type RecurringDraft } from '@/lib/recurring'
+import { draftLink, type RecurringDraft } from '@/lib/recurring'
 import { useDefaultCurrency } from '@/hooks/use-transactions'
 import {
   Pagination,
@@ -156,7 +156,7 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
             <tbody>
               {displayedDrafts.map((draft) => (
                 <tr
-                  key={draftTransactionId(draft)}
+                  key={draftLink(draft)}
                   className="border-b border-dashed bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors"
                   onClick={() => setSelectedDraft(draft)}
                 >
@@ -227,7 +227,7 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
           <div className="space-y-3 md:hidden">
             {displayedDrafts.map((draft) => (
               <button
-                key={draftTransactionId(draft)}
+                key={draftLink(draft)}
                 type="button"
                 className="w-full rounded-lg border border-dashed border-primary/60 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
                 onClick={() => setSelectedDraft(draft)}

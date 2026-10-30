@@ -86,8 +86,8 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
   }
 
   const { unsynced } = transaction
-  // Added by approving a draft: it already repeats
-  const recurringSource = recurringSourceOf(transaction.transactionId, recurringPayments ?? [])
+  // Part of a recurring payment (column K); null when it isn't or the payment was deleted
+  const recurringSource = recurringSourceOf(transaction.recurring, recurringPayments ?? [])
 
   const handleRetry = async () => {
     await retryOutboxEntries([transaction.transactionId])
@@ -269,10 +269,12 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
             </div>
           )}
 
-          {recurringSource && (
+          {transaction.recurring && (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Repeat className="h-3 w-3" />
-              From recurring payment: {recurringSource.what} ({describeSchedule(recurringSource).toLowerCase()})
+              {recurringSource
+                ? `Recurring payment: ${recurringSource.what} (${describeSchedule(recurringSource).toLowerCase()})`
+                : recurringPayments ? 'Recurring payment (since deleted)' : 'Recurring payment'}
             </p>
           )}
 
@@ -306,7 +308,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               </Button>
             )}
             {/* A return is never recurring; recurring payments need a Google Sheet */}
-            {!transaction.returnOf && !recurringSource && provider.mode === 'google' && (
+            {!transaction.returnOf && !transaction.recurring && provider.mode === 'google' && (
               <Button variant="outline" size="sm" className="gap-2" onClick={() => setMode('recurring')} aria-label="Make recurring" title="Make recurring">
                 <Repeat className="h-3.5 w-3.5" />
               </Button>

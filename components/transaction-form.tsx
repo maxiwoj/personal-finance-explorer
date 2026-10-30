@@ -5,7 +5,7 @@ import { useCategories, useCategoryListActions, useCurrencies, useFetchRatesStar
 import { useOnline } from '@/hooks/use-outbox-sync'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { canExtendRates, compareDates, formatDate, type RatesStart, type StartDate } from '@/lib/currencies'
-import { isoDate, nextAfterToday, RECURRING_UNITS, validateRecurringInput, type RecurringUnit } from '@/lib/recurring'
+import { isoDate, nextAfterToday, occurrenceLink, RECURRING_UNITS, validateRecurringInput, type RecurringUnit } from '@/lib/recurring'
 import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
@@ -320,6 +320,8 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const [repeats, setRepeats] = useState(false)
   const [repeatEvery, setRepeatEvery] = useState('1')
   const [repeatUnit, setRepeatUnit] = useState<RecurringUnit>('month')
+  // The new transaction's link to the recurring payment already set up, kept for a retry
+  const [createdLink, setCreatedLink] = useState<string | null>(null)
 
   // Holds back an app update's reload (lib/app-update.ts) while there's something to lose
   useUnsavedInput(
@@ -419,12 +421,15 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setError(null)
     setIsSaving(true)
     try {
-      // First, so a failure leaves nothing half done; once set up it isn't set up again on a retry
-      if (recurring) {
-        await addRecurringPayment(recurring, nextAfterToday(recurring, dayOf(result.timestamp)))
-        setRepeats(false)
+      // First, so the transaction can be saved linked to it (column K); once set up it isn't set up
+      // again on a retry
+      let link = createdLink
+      if (recurring && !link) {
+        const paymentId = await addRecurringPayment(recurring, nextAfterToday(recurring, dayOf(result.timestamp)))
+        link = occurrenceLink(paymentId, dayOf(result.timestamp))
+        setCreatedLink(link)
       }
-      const { outboxId } = await saveTransaction(result, original)
+      const { outboxId } = await saveTransaction(link ? { ...result, recurring: link } : result, original)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not
       // fatal. A new transaction doesn't wait for it, so the saved screen shows at once, also offline.
       const listed = categoryList?.find(c => c.name === result.category.toLowerCase())

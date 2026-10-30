@@ -163,16 +163,26 @@ export function draftTransaction(draft: Pick<RecurringDraft, 'payment' | 'date'>
   }
 }
 
-// The same for every attempt, so a retried approval finds the row it already added
-export function draftTransactionId(draft: Pick<RecurringDraft, 'payment' | 'date'>) {
-  return `${draft.payment.id}-${isoDate(draft.date)}`
+// Column K of a transaction: the recurring payment it belongs to and which of its dates it is,
+// e.g. "<payment ID>@2026-10-30". A retried approval finds the row it already added by it.
+export function occurrenceLink(paymentId: string, date: StartDate) {
+  return `${paymentId}@${isoDate(date)}`
 }
 
-// The payment an approved draft came from, read from its transaction ID (draftTransactionId).
-// Only sheets with stored IDs keep that ID; other transactions have no recorded payment.
-export function recurringSourceOf(transactionId: string, payments: RecurringPayment[]): RecurringPayment | null {
-  const match = transactionId.match(/^(.+)-\d{4}-\d{2}-\d{2}$/)
-  return (match && payments.find(payment => payment.id === match[1])) || null
+export function draftLink(draft: Pick<RecurringDraft, 'payment' | 'date'>) {
+  return occurrenceLink(draft.payment.id, draft.date)
+}
+
+export function parseOccurrenceLink(value: string | undefined): { paymentId: string; date: StartDate } | null {
+  const match = value?.trim().match(/^(.+)@(\d{4}-\d{2}-\d{2})$/)
+  const date = match && parseIsoDate(match[2])
+  return match && date ? { paymentId: match[1], date } : null
+}
+
+// The payment a transaction's column K points at; null when it has none or it was deleted
+export function recurringSourceOf(link: string | undefined, payments: RecurringPayment[]): RecurringPayment | null {
+  const parsed = parseOccurrenceLink(link)
+  return (parsed && payments.find(payment => payment.id === parsed.paymentId)) || null
 }
 
 export function describeSchedule({ every, unit }: Pick<RecurringPaymentInput, 'every' | 'unit'>) {

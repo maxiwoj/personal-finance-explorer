@@ -1,6 +1,6 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
-import { draftTransaction, draftTransactionId, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
+import { draftLink, draftTransaction, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
 import { recordedAmount } from './returns'
 import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
@@ -19,7 +19,7 @@ export async function fetchSheetData(
   spreadsheetId: string,
   sheetName: string
 ): Promise<Transaction[]> {
-  const range = `${sheetName}!A:J`
+  const range = `${sheetName}!A:K`
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
   
   const response = await fetch(url, {
@@ -129,6 +129,43 @@ async function sheetsRequest(accessToken: string, url: string, init: RequestInit
   return response.json()
 }
 
+// Column K holds a recurring payment's link (lib/recurring.ts). Sheets made before it existed
+// get its header the first time the app writes one, so the column is labelled in the sheet.
+async function ensureRecurringHeader(accessToken: string, spreadsheetId: string, signal?: AbortSignal) {
+  const range = `${SHEETS.FULL}!K1`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
+  const header = await sheetsRequest(accessToken, url, { signal })
+  if (header.values?.[0]?.[0]) return
+
+  await sheetsRequest(accessToken, `${url}?valueInputOption=RAW`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [['Recurring']] }),
+    signal,
+  })
+}
+
+// Sets column K of an existing transaction, once it is set up as a recurring payment. The row is
+// checked like an edit's, and a transaction that already belongs to one is left alone.
+export async function linkTransactionToRecurring(accessToken: string, spreadsheetId: string, original: Transaction, link: string): Promise<void> {
+  const valuesUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values`
+  const sheetRow = await findRowIndex(accessToken, spreadsheetId, original.transactionId) + 1
+  const current = await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!A${sheetRow}:K${sheetRow}`)}`)
+  const row: string[] = current.values?.[0] ?? []
+
+  if (!matchesTransaction(row, original)) {
+    throw new Error('This transaction changed in the spreadsheet. Reload the data and try again.')
+  }
+  if (row[10]?.trim()) {
+    throw new Error('This transaction already belongs to a recurring payment.')
+  }
+
+  await ensureRecurringHeader(accessToken, spreadsheetId)
+  await sheetsRequest(accessToken, `${valuesUrl}/${encodeURIComponent(`${SHEETS.FULL}!K${sheetRow}`)}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [[asText(link)]] }),
+  })
+}
+
 // Sheets made from the original template derive TransactionID from the row number with an
 // ARRAYFORMULA in H1. Writing an ID there would break that formula, and its IDs shift when rows
 // are deleted or sorted, so returns cannot link to them.
@@ -181,11 +218,14 @@ export async function appendTransaction(
     await findRowIndex(accessToken, spreadsheetId, input.returnOf)
   }
 
-  // null leaves the formula columns (AmountPLN, MonthYear) and empty Notes untouched
+  // null leaves the formula columns (AmountPLN, MonthYear, and TransactionID on sheets that
+  // derive it) and empty cells untouched
+  const recurring = input.recurring ? asText(input.recurring) : null
   const values = storedIds
-    ? [...toInputRow(input), null, null, crypto.randomUUID(), null, input.returnOf ?? null]
-    : toInputRow(input)
-  const range = `${SHEETS.FULL}!A:${storedIds ? 'J' : INPUT_RANGE_END}`
+    ? [...toInputRow(input), null, null, crypto.randomUUID(), null, input.returnOf ?? null, recurring]
+    : recurring ? [...toInputRow(input), null, null, null, null, null, recurring] : toInputRow(input)
+  const range = `${SHEETS.FULL}!A:${storedIds || recurring ? 'K' : INPUT_RANGE_END}`
+  if (recurring) await ensureRecurringHeader(accessToken, spreadsheetId)
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
 
   await sheetsRequest(accessToken, url, {
@@ -203,12 +243,13 @@ export async function appendQueuedTransaction(
   transactionId: string,
   signal?: AbortSignal
 ): Promise<void> {
-  const range = `${SHEETS.FULL}!A:J`
+  const range = `${SHEETS.FULL}!A:K`
   const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+  if (input.recurring) await ensureRecurringHeader(accessToken, spreadsheetId, signal)
 
   await sheetsRequest(accessToken, url, {
     method: 'POST',
-    body: JSON.stringify({ values: [[...toInputRow(input), null, null, transactionId, null, null]] }),
+    body: JSON.stringify({ values: [[...toInputRow(input), null, null, transactionId, null, null, input.recurring ? asText(input.recurring) : null]] }),
     signal,
   })
 }
@@ -349,7 +390,7 @@ export async function fetchCategoriesAndRecent(accessToken: string, spreadsheetI
 }> {
   const params = new URLSearchParams()
   params.append('ranges', `${SHEETS.CATEGORIES}!A:C`)
-  params.append('ranges', `${SHEETS.RECENT}!A:J`)
+  params.append('ranges', `${SHEETS.RECENT}!A:K`)
 
   try {
     const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchGet?${params}`)
@@ -698,8 +739,9 @@ function toRecurringRow(payment: RecurringPayment): (string | number)[] {
   ]
 }
 
-// next defaults to the start; a payment set up from a transaction already paid passes a later one
-export async function addRecurringPayment(accessToken: string, spreadsheetId: string, input: RecurringPaymentInput, next = input.start): Promise<void> {
+// next defaults to the start; a payment set up from a transaction already paid passes a later one.
+// Returns the new payment's ID.
+export async function addRecurringPayment(accessToken: string, spreadsheetId: string, input: RecurringPaymentInput, next = input.start): Promise<string> {
   const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
 
   if (await fetchRecurringPayments(accessToken, spreadsheetId) === null) {
@@ -718,6 +760,7 @@ export async function addRecurringPayment(accessToken: string, spreadsheetId: st
     method: 'POST',
     body: JSON.stringify({ values: [toRecurringRow(payment)] }),
   })
+  return payment.id
 }
 
 // The payment's sheet row, re-read to make sure it still holds what the user saw; otherwise the
@@ -772,21 +815,17 @@ export async function deleteRecurringPayment(accessToken: string, spreadsheetId:
   })
 }
 
-// Adds the draft as a transaction, then moves the payment to its next date. The transaction's ID
-// comes from the payment and the date, so a retry after a failed second step doesn't add it twice.
-// Sheets with formula IDs get no ID and no such check.
+// Adds the draft as a transaction linked to the payment's date in column K, then moves the
+// payment to its next date. A retry after a failed second step finds that link and doesn't add
+// the transaction twice.
 export async function approveRecurringDraft(accessToken: string, spreadsheetId: string, draft: Pick<RecurringDraft, 'payment' | 'date'>): Promise<void> {
   const { payment, date } = draft
   const sheetRow = await findRecurringRow(accessToken, spreadsheetId, payment)
-  const input = draftTransaction(draft, new Date())
+  const link = draftLink(draft)
+  const links = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(`${SHEETS.FULL}!K:K`)}`)
 
-  if (await hasStoredIds(accessToken, spreadsheetId)) {
-    const transactionId = draftTransactionId(draft)
-    if (!await transactionIdExists(accessToken, spreadsheetId, transactionId)) {
-      await appendQueuedTransaction(accessToken, spreadsheetId, input, transactionId)
-    }
-  } else {
-    await appendTransaction(accessToken, spreadsheetId, input)
+  if (!rowsWithId(links.values || [], link).length) {
+    await appendTransaction(accessToken, spreadsheetId, { ...draftTransaction(draft, new Date()), recurring: link })
   }
 
   await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...payment, next: occurrenceAfter(payment, date) })

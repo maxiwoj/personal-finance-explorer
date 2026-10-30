@@ -5,7 +5,7 @@ import { useCategories, useCurrencies, useRecentTransactions, useRecurringAction
 import { AMOUNT_PATTERN, byFrequency, ChipPicker } from '@/components/transaction-form'
 import { getCategoryColor } from '@/lib/colors'
 import { formatDate } from '@/lib/currencies'
-import { dayOf, isoDate, nextAfterToday, parseIsoDate, RECURRING_UNITS, validateRecurringInput, type RecurringPayment, type RecurringUnit } from '@/lib/recurring'
+import { dayOf, isoDate, nextAfterToday, occurrenceLink, parseIsoDate, RECURRING_UNITS, validateRecurringInput, type RecurringPayment, type RecurringUnit } from '@/lib/recurring'
 import { recordedAmount } from '@/lib/returns'
 import type { Transaction } from '@/lib/types'
 import { parseMoney } from '@/lib/sheets'
@@ -31,7 +31,7 @@ export function RecurringPaymentForm({ original, from, onSaved, onCancel }: Recu
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
   const { data: currencyList } = useCurrencies()
-  const { addRecurringPayment, updateRecurringPayment } = useRecurringActions()
+  const { addRecurringPayment, linkTransactionToRecurring, updateRecurringPayment } = useRecurringActions()
 
   // As on the Add page: the categories tab's order without hidden ones, else alphabetical
   const categories = useMemo(() => {
@@ -74,6 +74,8 @@ export function RecurringPaymentForm({ original, from, onSaved, onCancel }: Recu
   const [end, setEnd] = useState(initial.end)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  // Set up from a transaction whose link failed: a retry only links it
+  const [createdId, setCreatedId] = useState<string | null>(null)
 
   useUnsavedInput(
     isSaving || amount !== initial.amount || what !== initial.what || category !== initial.category || currency !== initial.currency ||
@@ -109,15 +111,23 @@ export function RecurringPaymentForm({ original, from, onSaved, onCancel }: Recu
 
     setError(null)
     setIsSaving(true)
+    let saved = createdId !== null
     try {
       if (original) {
         await updateRecurringPayment(original, result)
+      } else if (from) {
+        // The transaction is linked (column K) as the payment's date it fell on
+        const paymentId = createdId ?? await addRecurringPayment(result, nextAfterToday(result, dayOf(new Date())))
+        setCreatedId(paymentId)
+        saved = true
+        await linkTransactionToRecurring(from, occurrenceLink(paymentId, dayOf(from.timestamp)))
       } else {
-        await addRecurringPayment(result, from ? nextAfterToday(result, dayOf(new Date())) : undefined)
+        await addRecurringPayment(result)
       }
       onSaved()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save the recurring payment.')
+      const message = saveError instanceof Error ? saveError.message : 'Failed to save the recurring payment.'
+      setError(saved && from ? `The recurring payment is saved, but marking this transaction as part of it failed: ${message} Try again to retry only that.` : message)
     } finally {
       setIsSaving(false)
     }

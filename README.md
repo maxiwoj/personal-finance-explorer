@@ -15,7 +15,7 @@ A powerful, privacy-focused personal finance dashboard that turns your Google Sh
 ## Why Personal Finance Explorer?
 
 - **Your data stays in your Google Sheet**: There is no database. Transactions are read from and written to the Google Sheets API directly in your browser; the app's server never receives them.
-- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add, edit, return or delete a transaction, and only the input columns (Timestamp to Currency, TransactionID, Notes and ReturnOf) of the `expenses` tab, when you manage currencies in the `currencyDates` tab, or when you manage or approve recurring payments in the `recurring` tab.
+- **Minimal Google access**: Only the `drive.file` scope (plus your email for sign-in), so the app can open just the spreadsheet you pick, not the rest of your Drive. It writes only when you add, edit, return or delete a transaction, and only the input columns (Timestamp to Currency, TransactionID, Notes, ReturnOf and Recurring) of the `expenses` tab, when you manage currencies in the `currencyDates` tab, or when you manage or approve recurring payments in the `recurring` tab.
 - **Local cache only**: Transactions are cached in your browser (IndexedDB) for fast loads and cleared on sign-out. Transactions added offline wait in a separate on-device queue until they reach your sheet.
 - **No vendor lock-in**: Keep using Sheets however you like; the app is just a view on top. Self-host your own instance in one click.
 - **Server is auth-only**: The backend just exchanges and refreshes Google OAuth tokens (refresh token kept in an HTTP-only cookie).

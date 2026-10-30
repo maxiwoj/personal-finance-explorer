@@ -17,7 +17,9 @@ A payment you just made can become a recurring one, so you don't enter it twice:
 - **On the Add page**, tick **Repeats** and choose how often (every N days, weeks, months or years). Saving sets up the recurring payment first, then adds the transaction. The transaction is the payment's first date, already paid, so drafts start with the next date. An end date can be set later on the Recurring payments page. The box needs a connection: offline, the transaction still saves, just not as recurring.
 - **From a transaction's details**, the **Make recurring** button (↻) opens the recurring payment form filled in from the transaction, starting on its date. That transaction and any dates up to today count as paid, so no drafts show for the months in between; the form shows the first draft's date.
 
-The transaction and the recurring payment are not linked: the payment only records which date comes next. Editing or deleting one leaves the other unchanged. A transaction added by approving a draft is the exception, on sheets with [stored transaction IDs](./migrations/stable-transaction-ids.md): its ID names the payment, so its details show **From recurring payment** instead of **Make recurring**.
+## Linked transactions
+
+Every transaction that belongs to a recurring payment (approved from a draft, saved with **Repeats**, or set up with **Make recurring**) has `<payment ID>@YYYY-MM-DD` in column K (`Recurring`) of `expenses`: the payment and which of its dates it is. Such a transaction shows ↻ in lists, and its details name the payment instead of offering **Make recurring**. Editing or deleting the transaction leaves the payment unchanged; deleting the payment leaves its transactions and their column K as they are. Setting up the column: [Recurring column](./migrations/recurring-column.md).
 
 ## Drafts
 
@@ -30,7 +32,7 @@ Drafts are refreshed with the rest of the data: **Refresh recent data** / **Relo
 
 Both need a connection. Before writing, the app re-reads the payment's row and refuses if it changed in the sheet (e.g. approved on another device); reload and try again.
 
-With [stored transaction IDs](./migrations/stable-transaction-ids.md), an approved transaction's ID is the payment's ID plus the date (`<id>-YYYY-MM-DD`). If approving fails after the transaction was added, approving again finds it and only moves the payment on, so it is never added twice. Sheets with formula IDs get no such check.
+Approving first checks column K for that payment's date. If approving failed after the transaction was added, approving again finds it and only moves the payment on, so it is never added twice.
 
 ## Dates
 

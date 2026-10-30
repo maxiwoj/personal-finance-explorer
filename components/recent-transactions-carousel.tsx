@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { Wallet, ArrowRight } from 'lucide-react'
 import { TransactionIndicators } from './transaction-indicators'
 import { DraftBadge, dueLabel, RecurringDraftDialog } from './recurring-drafts'
-import { draftTransactionId, type RecurringDraft } from '@/lib/recurring'
+import { draftLink, type RecurringDraft } from '@/lib/recurring'
 
 interface RecentTransactionsCarouselProps {
   transactions: Transaction[]
@@ -28,12 +28,20 @@ export function RecentTransactionsCarousel({
   onTransactionClick,
 }: RecentTransactionsCarouselProps) {
   const [selectedDraft, setSelectedDraft] = React.useState<RecurringDraft | null>(null)
+  const scrollerRef = React.useRef<HTMLDivElement>(null)
   // Take the most recent transactions based on the limit
   const recentTransactions = React.useMemo(() => {
     return [...transactions]
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit)
   }, [transactions, limit])
+
+  // Scroll snapping keeps the card that was first in view when one is added before it (a draft,
+  // or the transaction just approved), so the row goes back to the start to show the new one
+  const firstKey = drafts.length > 0 ? draftLink(drafts[0]) : recentTransactions[0]?.transactionId
+  React.useEffect(() => {
+    scrollerRef.current?.scrollTo({ left: 0 })
+  }, [firstKey])
 
   const scrollToRecent = () => {
     const element = document.getElementById('recent-transactions')
@@ -63,10 +71,10 @@ export function RecentTransactionsCarousel({
       </div>
       
       {/* Native horizontal scroll for better desktop/trackpad experience */}
-      <div className="w-full overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory flex gap-3 scroll-smooth">
+      <div ref={scrollerRef} className="w-full overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory flex gap-3 scroll-smooth">
         {/* Same size as a transaction card; a dashed outline (which takes no space) and the badge mark it as a draft */}
         {drafts.map((draft) => (
-          <div key={draftTransactionId(draft)} className="basis-[85%] sm:basis-[45%] lg:basis-[30%] shrink-0 snap-start">
+          <div key={draftLink(draft)} className="basis-[85%] sm:basis-[45%] lg:basis-[30%] shrink-0 snap-start">
             <Card
               className="border-none bg-muted/50 hover:bg-muted/80 transition-all cursor-pointer active:scale-[0.98] group py-0 gap-0 outline-1 outline-dashed outline-primary/60 -outline-offset-1"
               onClick={() => setSelectedDraft(draft)}
