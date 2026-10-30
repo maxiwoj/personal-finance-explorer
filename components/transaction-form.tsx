@@ -399,14 +399,17 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setIsSaving(true)
     try {
       await saveTransaction(result, original)
-      // Keep the categories tab complete; the transaction is already saved, so a failure here is not fatal
+      // Keep the categories tab complete; the transaction is already saved, so a failure here is not
+      // fatal. A new transaction doesn't wait for it, so the saved screen shows at once, also offline.
       const listed = categoryList?.find(c => c.name === result.category.toLowerCase())
+      let updateList: Promise<void> | undefined
       if (categoryList && !listed) {
-        await addCategory(result.category.toLowerCase()).catch(() => undefined)
+        updateList = addCategory(result.category.toLowerCase()).catch(() => undefined)
       } else if (listed?.hidden && !original) {
         // Typed in with "New", so it is wanted on the Add page again
-        await setCategoryHidden(listed.name, false).catch(() => undefined)
+        updateList = setCategoryHidden(listed.name, false).catch(() => undefined)
       }
+      if (original) await updateList
       // Only an edit can move a date back: adding uses the current time. The save stands either
       // way, and the rates are never extended without asking.
       if (original && provider.mode === 'google') {

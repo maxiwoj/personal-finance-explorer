@@ -163,6 +163,8 @@ After more than about 5 minutes in the background, the installed app goes back t
 ### What works offline
 The service worker (`app/sw.ts`, built with [Serwist](https://serwist.pages.dev) for Turbopack and served from `/serwist/sw.js`) caches at install: the pages (`/add`, `/dashboard`, `/transactions`, …), the build's JS and CSS, the fonts and the files in `public/`. It never caches `/api/*` or Google API responses; the data shown offline is the IndexedDB cache (see [Architecture](./architecture.md#storage--privacy)). `/category/<name>` is rendered on demand and doesn't open offline.
 
+New transactions are saved on the device first and appended to the sheet in the background: at launch, when the network comes back and when the app is reopened. Each keeps the time it was saved and the TransactionID made then, which is checked before a retry so a lost response never adds a row twice. Returns, edits, deletes and sheets whose TransactionID is a formula still need the network. To save offline, the app must have opened the spreadsheet online once on that device.
+
 ### Updates
 - Every deployment produces a new service worker. The app checks for one when it comes back to the foreground, and from **Account menu → Check for updates** (an installed iOS app has no pull-to-refresh).
 - The new version downloads in the background. With no unsaved input in a form it's applied at once (the page reloads); otherwise the nav shows **New version – Reload**.

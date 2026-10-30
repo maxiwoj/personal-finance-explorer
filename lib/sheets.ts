@@ -1,7 +1,7 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { recordedAmount } from './returns'
-import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows } from './sheet-rows'
+import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
 export class SheetsApiError extends Error {
@@ -131,19 +131,28 @@ async function sheetsRequest(accessToken: string, url: string, init: RequestInit
 // Sheets made from the original template derive TransactionID from the row number with an
 // ARRAYFORMULA in H1. Writing an ID there would break that formula, and its IDs shift when rows
 // are deleted or sorted, so returns cannot link to them.
-async function hasStoredIds(accessToken: string, spreadsheetId: string) {
+export async function hasStoredIds(accessToken: string, spreadsheetId: string, signal?: AbortSignal) {
   const range = `${SHEETS.FULL}!H1:H2`
-  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`)
+  const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`, { signal })
   const cells: unknown[][] = data.values || []
   return !cells.some(row => typeof row[0] === 'string' && row[0].startsWith('='))
 }
 
+// Indexes into the TransactionID column of the rows with this ID, also the sheet row numbers minus one
+async function findRowsWithId(accessToken: string, spreadsheetId: string, transactionId: string, signal?: AbortSignal) {
+  const range = `${SHEETS.FULL}!H:H`
+  const idColumn = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`, { signal })
+  return rowsWithId(idColumn.values || [], transactionId)
+}
+
+// Whether a row with this TransactionID is in the sheet, e.g. from an append whose response was lost
+export async function transactionIdExists(accessToken: string, spreadsheetId: string, transactionId: string, signal?: AbortSignal) {
+  return (await findRowsWithId(accessToken, spreadsheetId, transactionId, signal)).length > 0
+}
+
 // Index into the TransactionID column, which is also the sheet row number minus one
 async function findRowIndex(accessToken: string, spreadsheetId: string, transactionId: string) {
-  const range = `${SHEETS.FULL}!H:H`
-  const idColumn = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
-  const ids: string[][] = idColumn.values || []
-  const matches = ids.flatMap((row, index) => row[0]?.trim() === transactionId ? [index] : [])
+  const matches = await findRowsWithId(accessToken, spreadsheetId, transactionId)
 
   if (matches.length === 0) {
     throw new Error('This transaction was not found in the spreadsheet. Reload the data and try again.')
@@ -181,6 +190,25 @@ export async function appendTransaction(
   await sheetsRequest(accessToken, url, {
     method: 'POST',
     body: JSON.stringify({ values: [values] }),
+  })
+}
+
+// A queued new transaction (lib/outbox-sync.ts), with the ID made when it was saved. The caller
+// has checked that the sheet stores IDs.
+export async function appendQueuedTransaction(
+  accessToken: string,
+  spreadsheetId: string,
+  input: TransactionInput,
+  transactionId: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const range = `${SHEETS.FULL}!A:J`
+  const url = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`
+
+  await sheetsRequest(accessToken, url, {
+    method: 'POST',
+    body: JSON.stringify({ values: [[...toInputRow(input), null, null, transactionId, null, null]] }),
+    signal,
   })
 }
 

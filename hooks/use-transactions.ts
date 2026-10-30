@@ -80,20 +80,26 @@ export function useSaveTransaction() {
   const provider = useFinanceDataProvider()
   const afterWrite = useAfterWrite()
 
-  return async (input: TransactionInput, original?: Transaction) => {
+  // queued: the new transaction is on this device and syncs in the background
+  return async (input: TransactionInput, original?: Transaction): Promise<{ queued: boolean }> => {
     if (original) {
       await provider.updateTransaction(original, input)
-    } else {
-      await provider.addTransaction(input)
+      await afterWrite()
+      return { queued: false }
     }
 
+    const { queued } = await provider.addTransaction(input)
+    // A queued transaction is refetched by the sync once it's in the sheet
+    if (queued) return { queued }
+
     // A new transaction is shown from what was entered, so the refetch runs in the background.
-    // Edits and returns are shown from the refetched rows (a return changes its purchase's amount).
-    if (original || input.returnOf) {
+    // Returns are shown from the refetched rows (a return changes its purchase's amount).
+    if (input.returnOf) {
       await afterWrite()
     } else {
       void afterWrite()
     }
+    return { queued }
   }
 }
 

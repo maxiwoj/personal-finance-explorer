@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseCategoriesAndRecent, parseCategoryRows, parseTransactionRows } from '../lib/sheet-rows.ts'
+import { parseCategoriesAndRecent, parseCategoryRows, parseTransactionRows, rowsWithId } from '../lib/sheet-rows.ts'
 
 const HEADER = ['Timestamp', 'What', 'Category', 'Amount', 'Currency', 'AmountPLN', 'MonthYear', 'TransactionID', 'Notes', 'ReturnOf']
 const ROW = ['15/03/2025 10:30:00', 'Coffee', 'Food', '12,50', 'EUR', '53,40', '3_2025', 'id-1', 'with milk', '']
@@ -61,5 +61,14 @@ describe('parseCategoriesAndRecent', () => {
   it('treats ranges without values as empty tabs', () => {
     assert.deepEqual(parseCategoriesAndRecent([{}, {}]), { categories: [], recentTransactions: [] })
     assert.deepEqual(parseCategoriesAndRecent(undefined), { categories: [], recentTransactions: [] })
+  })
+})
+
+describe('rowsWithId', () => {
+  it('finds the TransactionID cells holding the ID, ignoring surrounding spaces', () => {
+    const ids = [['TransactionID'], ['id-1'], [], [' id-2 '], ['id-1']]
+    assert.deepEqual(rowsWithId(ids, 'id-2'), [3])
+    assert.deepEqual(rowsWithId(ids, 'id-1'), [1, 4])
+    assert.deepEqual(rowsWithId(ids, 'id-3'), [])
   })
 })

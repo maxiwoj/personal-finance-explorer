@@ -8,7 +8,10 @@ import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { createQueryPersister } from '@/lib/cache'
 import { PERSIST_BUSTER, PERSIST_MAX_AGE_MS, persistScopeKey, shouldPersistQuery } from '@/lib/query-persistence'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, appendCategory, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { enqueueTransaction, getKnownStoredIds, requestOutboxSync, setKnownStoredIds } from '@/lib/outbox'
+import { classifySyncError } from '@/lib/outbox-sync'
+import { useOutboxSync } from '@/hooks/use-outbox-sync'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
@@ -22,7 +25,8 @@ export interface FinanceDataProvider {
   getRecentTransactions: () => Promise<Transaction[]>
   getFullTransactions: () => Promise<Transaction[]>
   reloadData: (scope?: FinanceDataScope) => Promise<void>
-  addTransaction: (input: TransactionInput) => Promise<void>
+  // queued: saved on this device and sent by the sync (hooks/use-outbox-sync.ts), not yet in the sheet
+  addTransaction: (input: TransactionInput) => Promise<{ queued: boolean }>
   updateTransaction: (original: Transaction, input: TransactionInput) => Promise<void>
   deleteTransaction: (original: Transaction) => Promise<void>
   // null when the source has no category list (no categories tab, or demo mode)
@@ -63,8 +67,17 @@ function isMissingAccess(error: unknown) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// The request couldn't be sent: no token (offline at startup) or no network
+function isOfflineError(error: unknown) {
+  return (error instanceof Error && error.message === 'Not authenticated') || classifySyncError(error) === 'retry'
+}
+
+const UNKNOWN_IDS_OFFLINE_MESSAGE = 'Saving offline needs the spreadsheet to have been opened online on this device. Connect to the internet and try again.'
+const FORMULA_IDS_OFFLINE_MESSAGE = 'This spreadsheet computes TransactionID with a formula, so transactions can only be saved online. Update it as described in docs/migrations/stable-transaction-ids.md to save offline.'
+
 function buildGoogleProvider(
   accessToken: string | null,
+  userId: string | null,
   spreadsheetId: string | null,
   pickedAt: number | null,
   refreshSession: () => Promise<boolean>,
@@ -143,8 +156,33 @@ function buildGoogleProvider(
     },
     // Cached data is the query cache itself, which the caller invalidates
     async reloadData() {},
+    // A new transaction is queued and synced in the background, online or not. Returns need the
+    // purchase row and sheets with formula IDs have no ID to check for duplicates, so both are
+    // saved directly, online only.
     async addTransaction(input) {
-      await fetchWithRefresh(accessToken, (token, id) => appendTransaction(token, id, input), { isWrite: true })
+      let storedIds = spreadsheetId ? getKnownStoredIds(spreadsheetId) : null
+
+      if (!input.returnOf && userId && spreadsheetId && storedIds === null) {
+        try {
+          storedIds = await fetchWithRefresh(accessToken, (token, id) => hasStoredIds(token, id), { isWrite: true })
+          setKnownStoredIds(spreadsheetId, storedIds)
+        } catch (error) {
+          throw isOfflineError(error) ? new Error(UNKNOWN_IDS_OFFLINE_MESSAGE) : error
+        }
+      }
+
+      if (!input.returnOf && userId && spreadsheetId && storedIds) {
+        await enqueueTransaction(userId, spreadsheetId, input)
+        requestOutboxSync()
+        return { queued: true }
+      }
+
+      try {
+        await fetchWithRefresh(accessToken, (token, id) => appendTransaction(token, id, input), { isWrite: true })
+      } catch (error) {
+        throw !input.returnOf && storedIds === false && isOfflineError(error) ? new Error(FORMULA_IDS_OFFLINE_MESSAGE) : error
+      }
+      return { queued: false }
     },
     async updateTransaction(original, input) {
       await fetchWithRefresh(accessToken, (token, id) => updateTransaction(token, id, original, input), { isWrite: true })
@@ -210,7 +248,10 @@ function buildDemoProvider(): FinanceDataProvider {
     async reloadData() {
       await getOrCreateDemoTransactions(true)
     },
-    addTransaction: addDemoTransaction,
+    async addTransaction(input) {
+      await addDemoTransaction(input)
+      return { queued: false }
+    },
     updateTransaction: updateDemoTransaction,
     deleteTransaction: deleteDemoTransaction,
     async getCategories() {
@@ -264,6 +305,8 @@ export function FinanceDataProvider({ children }: { children: ReactNode }) {
   // Queries don't fetch until the cached data is back, so they refresh it instead of racing it
   const isRestoring = persistScope !== null && restoredScope !== persistScope
 
+  useOutboxSync({ enabled: mode === 'google', userId, spreadsheetId, accessToken, refreshSession })
+
   // Restores the user's and spreadsheet's cached queries, then keeps them saved
   useEffect(() => {
     if (!persistScope || !spreadsheetId) return
@@ -303,8 +346,8 @@ export function FinanceDataProvider({ children }: { children: ReactNode }) {
       return buildDemoProvider()
     }
 
-    return buildGoogleProvider(accessToken, spreadsheetId, pickedAt, refreshSession, pendingRefresh, reportAccessError)
-  }, [accessToken, mode, pendingRefresh, pickedAt, refreshSession, reportAccessError, spreadsheetId])
+    return buildGoogleProvider(accessToken, userId, spreadsheetId, pickedAt, refreshSession, pendingRefresh, reportAccessError)
+  }, [accessToken, mode, pendingRefresh, pickedAt, refreshSession, reportAccessError, spreadsheetId, userId])
 
   return (
     <DataProviderContext.Provider value={provider}>
