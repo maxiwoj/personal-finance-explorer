@@ -129,6 +129,14 @@ export function rescheduledNext(previousNext: StartDate, input: RecurringPayment
   return occurrenceOnOrAfter(input, from)
 }
 
+// The next date after an edit. Resuming an ended payment skips the dates it was ended for: it
+// continues from today, so no backlog of drafts shows for that time.
+export function editedNext(original: RecurringPayment, input: RecurringPaymentInput, today: StartDate): StartDate {
+  const next = rescheduledNext(original.next, input)
+  const resumed = hasEnded(original) && (input.end === null || compareDates(next, input.end) <= 0)
+  return resumed && compareDates(next, today) < 0 ? occurrenceOnOrAfter(input, today) : next
+}
+
 // Ending keeps the payment and its transactions' links: it only stops new drafts, from the next
 // date on. Not offered before its first date is handled, when deleting loses nothing.
 export function canEnd(payment: RecurringPayment) {

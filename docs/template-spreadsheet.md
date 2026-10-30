@@ -15,7 +15,7 @@ The script is standalone (created at [script.google.com](https://script.google.c
 - Never open **Extensions → Apps Script** or **Extensions → Macros** on the template. Doing so attaches a script project to it, and every copy then warns about it. If the warning comes back, delete the attached project from the [Apps Script dashboard](https://script.google.com/home).
 - Keep `expenses!A` as values. Paste new sample rows as values, in the `DD/MM/YYYY HH:MM:SS` format.
 - Don't add sample rows dated after today: the script only moves dates forward, from the newest one.
-- Every run moves each recurring sample so its `Next` (`recurring!I`) is today, so every copy shows its drafts due today, also after the owner approves one in the template. `Start` and `End` (H:J) and the dates in that payment's `expenses!K` links move by the same days. Sample transactions linked to a payment must be on its earlier dates, never on `Next`: `Next` is the first date not yet handled, and approving it would skip a date that already has a linked row.
+- Every run moves each active recurring sample so its `Next` (`recurring!I`) is today (ended ones are left as they are), so every copy shows its drafts due today, also after the owner approves one in the template. `Start` and `End` (H:J) and the dates in that payment's `expenses!K` links move by the same days. Sample transactions linked to a payment must be on its earlier dates, never on `Next`: `Next` is the first date not yet handled, and approving it would skip a date that already has a linked row.
 - `expenses2` must include column K (its formula's range extended to `K`), and `expenses!K1` reads `Recurring`; see [Recurring column](./migrations/recurring-column.md).
 - The shifted dates must stay within the `currencyDates` range (from `DATE(2025, 11, 1)`, see [Currencies](./currencies.md)), or `AmountPLN` can't convert the oldest rows.
 
@@ -69,7 +69,8 @@ function parseDay(v) {
   return iso ? new Date(+iso[1], iso[2] - 1, +iso[3]) : parseText(v);
 }
 
-// Moves each recurring payment so its Next is today: a draft due today in every copy. Start and
+// Moves each active recurring payment so its Next is today: a draft due today in every copy.
+// Ended ones (End set and before Next) stay as they are. Start and
 // End (H:J) move by the same days, and so do the dates in that payment's expenses!K links
 // ("<payment ID>@YYYY-MM-DD"), so its Next never lands on a date that already has a linked row.
 function moveRecurringToToday(spreadsheet, expenses, today) {
@@ -81,7 +82,9 @@ function moveRecurringToToday(spreadsheet, expenses, today) {
   const moved = rows.map(row => {
     const dates = row.slice(7, 10);
     const next = parseDay(dates[1]);
-    const shift = next ? Math.round((today - new Date(next.getFullYear(), next.getMonth(), next.getDate())) / DAY_MS) : 0;
+    const end = dates[2] === '' ? null : parseDay(dates[2]);
+    const ended = next && end && end < next;
+    const shift = next && !ended ? Math.round((today - new Date(next.getFullYear(), next.getMonth(), next.getDate())) / DAY_MS) : 0;
     if (!shift) return dates;
     shifts[String(row[0]).trim()] = shift;
     return dates.map(v => {

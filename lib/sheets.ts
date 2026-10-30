@@ -1,6 +1,6 @@
 import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
-import { draftLink, draftTransaction, endedPayment, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
+import { dayOf, draftLink, draftTransaction, editedNext, endedPayment, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
 import { recordedAmount } from './returns'
 import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
@@ -796,10 +796,11 @@ async function writeRecurringRow(accessToken: string, spreadsheetId: string, she
   })
 }
 
-// Payments already approved or removed stay handled under the new schedule (rescheduledNext)
+// Payments already approved or removed stay handled under the new schedule; a resumed one
+// continues from today (editedNext)
 export async function updateRecurringPayment(accessToken: string, spreadsheetId: string, original: RecurringPayment, input: RecurringPaymentInput): Promise<void> {
   const sheetRow = await findRecurringRow(accessToken, spreadsheetId, original)
-  await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...input, id: original.id, next: rescheduledNext(original.next, input) })
+  await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...input, id: original.id, next: editedNext(original, input, dayOf(new Date())) })
 }
 
 // Stops new drafts but keeps the row, so its transactions still name it

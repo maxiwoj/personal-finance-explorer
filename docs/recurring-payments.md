@@ -8,7 +8,7 @@ Open **Recurring payments** from the account menu. It lists every payment with i
 
 - **Add** takes the same fields as a transaction (amount, category, what, currency) plus how often it repeats (every N days, weeks, months or years), the date of the first payment and an optional end date. The first payment creates the `recurring` tab.
 - **Edit** changes any field. Payments already approved or removed stay handled: the new schedule continues from the old next date, or from the new first payment when that is later.
-- **End** stops new drafts from the next date on, by setting the end date to the day before it. The payment stays in the list as **Ended** (listed last), and its transactions keep showing which payment they belong to. To resume, edit it and clear or move the end date; dates between the old next date and today then show as drafts, which you can remove. End is offered once at least one date has been handled.
+- **End** stops new drafts from the next date on, by setting the end date to the day before it. The payment stays in the list as **Ended** (listed last), and its transactions keep showing which payment they belong to. To resume, edit it and clear or move the end date: it continues from today, skipping the dates it was ended for. End is offered once at least one date has been handled.
 - **Delete** removes the payment's row. Transactions it already added stay, but no longer show which payment they belonged to ("since deleted"), so prefer **End** for a payment you used. Delete suits one added by mistake.
 
 ## From a transaction

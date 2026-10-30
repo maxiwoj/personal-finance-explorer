@@ -134,26 +134,29 @@ export default function RecurringPaymentsPage() {
                 const ended = hasEnded(payment)
                 const due = !ended && compareDates(payment.next, today) <= 0
                 return (
-                  <li key={payment.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 py-3', ended && 'text-muted-foreground')}>
+                  <li key={payment.id} className={cn('flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3', ended && 'text-muted-foreground')}>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{payment.what}</span>
-                        {ended && <Badge variant="secondary">Ended</Badge>}
-                        {due && <Badge>Due</Badge>}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-medium">{payment.what}</span>
+                          {ended && <Badge variant="secondary">Ended</Badge>}
+                          {due && <Badge>Due</Badge>}
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums">
+                          {payment.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {payment.currency}
+                        </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         <span className="inline-block rounded-md px-2 py-0.5 font-bold text-white" style={{ backgroundColor: getCategoryColor(payment.category) }}>
                           {payment.category}
                         </span>
-                        <span>{describeSchedule(payment)}</span>
-                        {!ended && <span>· next {formatDate(payment.next)}</span>}
-                        {payment.end && <span>· until {formatDate(payment.end)}</span>}
+                        <span className="whitespace-nowrap">{describeSchedule(payment)}</span>
+                        {!ended && <span className="whitespace-nowrap">· next {formatDate(payment.next)}</span>}
+                        {payment.end && <span className="whitespace-nowrap">· until {formatDate(payment.end)}</span>}
                       </div>
                     </div>
-                    <span className="font-semibold tabular-nums">
-                      {payment.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {payment.currency}
-                    </span>
-                    <div className="flex gap-1">
+                    {/* Fixed width on wide screens, so amounts line up whether or not End is offered */}
+                    <div className="flex shrink-0 justify-end gap-1 sm:w-48">
                       <Button size="sm" variant="ghost" onClick={() => setEditing(payment)}>Edit</Button>
                       {canEnd(payment) && (
                         <Button size="sm" variant="ghost" onClick={() => setPending({ payment, action: 'end' })}>End</Button>
