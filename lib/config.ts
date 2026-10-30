@@ -23,7 +23,7 @@ export const TEMPLATE_COPY_URL = `https://docs.google.com/spreadsheets/d/${TEMPL
 
 export const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 
-export const REPO_URL = 'https://github.com/maxiwoj/personal-finance-explorer-rs'
+export const REPO_URL = 'https://github.com/maxiwoj/personal-finance-explorer'
 
 // Author's profiles, shown in the app footer; add new entries here
 export const AUTHOR = {

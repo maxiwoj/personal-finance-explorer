@@ -32,7 +32,7 @@ Open **Currencies** from the account menu.
 - **Remove** clears the pair's first four rows. The columns stay, as an empty gap, so later currencies keep the column numbers in row 2; the next currency added fills the gap. The default currency, and any currency used by a transaction in `expenses`, cannot be removed.
 - **Change the default** swaps two codes: B1 gets the chosen exchange-rate currency and that currency's pair gets the old default, so the old default stays convertible (its formula X now fetches its rate against the new default). Overwriting B1 alone would drop the old default from the tab. A multiplier cannot become the default. Every converted amount is recalculated in the new default, and the app warns about what changes silently:
   - **Transactions with an empty Currency cell** are in the default currency, so they are read as the new default. Transactions added from the app always set their currency.
-  - **Multipliers** assume the amount is in the default currency, so their transactions are read as the new default too. Separating multipliers from currencies is tracked in [#49](https://github.com/maxiwoj/personal-finance-explorer-rs/issues/49).
+  - **Multipliers** assume the amount is in the default currency, so their transactions are read as the new default too. Separating multipliers from currencies is tracked in [#49](https://github.com/maxiwoj/personal-finance-explorer/issues/49).
 
 The app does not rename a currency: that would change how existing transactions are converted. Do that in the spreadsheet.
 
