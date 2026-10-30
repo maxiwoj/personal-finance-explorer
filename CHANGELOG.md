@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0](https://github.com/maxiwoj/personal-finance-explorer/compare/v1.0.1...v1.1.0) (2026-10-30)
+
+
+### Features
+
+* add personal website link to footer ([8aa5b1d](https://github.com/maxiwoj/personal-finance-explorer/commit/8aa5b1d5f5bb161ce7c69a2b5b483f7a5fff00b7))
+* add personal website link to footer ([f56ecad](https://github.com/maxiwoj/personal-finance-explorer/commit/f56ecad1fb3e039d912c4fd48fb475c9d3c4ac8a))
+* list personal website first in footer links ([d32ca39](https://github.com/maxiwoj/personal-finance-explorer/commit/d32ca395b7d8e15b710b338459151186b4855bcc))
+
 ## [1.0.1](https://github.com/maxiwoj/personal-finance-explorer-rs/compare/v1.0.0...v1.0.1) (2026-04-10)
 
 
