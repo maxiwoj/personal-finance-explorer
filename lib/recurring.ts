@@ -116,6 +116,12 @@ export function occurrenceAfter(schedule: Schedule, date: StartDate): StartDate 
   return occurrenceOnOrAfter(schedule, addDays(date, 1))
 }
 
+// The first date still to come for a payment set up from a transaction already paid: today's
+// and earlier dates count as paid, so no drafts show for them. A later start is its own first date.
+export function nextAfterToday(schedule: Schedule, today: StartDate): StartDate {
+  return compareDates(schedule.start, today) > 0 ? schedule.start : occurrenceAfter(schedule, today)
+}
+
 // After an edit, the payments already approved or removed stay handled: the new schedule
 // continues from the old next date, or from its start when that is later
 export function rescheduledNext(previousNext: StartDate, input: RecurringPaymentInput): StartDate {

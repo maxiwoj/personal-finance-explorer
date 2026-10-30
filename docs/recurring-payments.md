@@ -10,6 +10,15 @@ Open **Recurring payments** from the account menu. It lists every payment with i
 - **Edit** changes any field. Payments already approved or removed stay handled: the new schedule continues from the old next date, or from the new first payment when that is later.
 - **Delete** removes the payment's row. Transactions it already added stay.
 
+## From a transaction
+
+A payment you just made can become a recurring one, so you don't enter it twice:
+
+- **On the Add page**, tick **Repeats** and choose how often (every N days, weeks, months or years). Saving sets up the recurring payment first, then adds the transaction. The transaction is the payment's first date, already paid, so drafts start with the next date. An end date can be set later on the Recurring payments page. The box needs a connection: offline, the transaction still saves, just not as recurring.
+- **From a transaction's details**, the **Make recurring** button (↻) opens the recurring payment form filled in from the transaction, starting on its date. That transaction and any dates up to today count as paid, so no drafts show for the months in between; the form shows the first draft's date.
+
+The transaction and the recurring payment are not linked: the payment only records which date comes next. Editing or deleting one leaves the other unchanged.
+
 ## Drafts
 
 A payment is due once its next date is today or earlier. The **Transactions** page then shows it under **Draft transactions**, one draft per payment, with how many later dates are also due (e.g. after a few months away).

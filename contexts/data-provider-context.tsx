@@ -56,7 +56,8 @@ export interface FinanceDataProvider {
   revertRates: (extendedStart: StartDate, previousStart: StartDate) => Promise<void>
   // null when the source has no recurring tab; adding the first payment creates it
   getRecurringPayments: () => Promise<RecurringPayment[] | null>
-  addRecurringPayment: (input: RecurringPaymentInput) => Promise<void>
+  // next defaults to the start; later when set up from a transaction already paid
+  addRecurringPayment: (input: RecurringPaymentInput, next?: StartDate) => Promise<void>
   updateRecurringPayment: (original: RecurringPayment, input: RecurringPaymentInput) => Promise<void>
   deleteRecurringPayment: (original: RecurringPayment) => Promise<void>
   // Adds a due payment as a transaction and moves the payment to its next date
@@ -243,8 +244,8 @@ function buildGoogleProvider(
     async getRecurringPayments() {
       return fetchWithRefresh(accessToken, fetchRecurringPayments)
     },
-    async addRecurringPayment(input) {
-      await fetchWithRefresh(accessToken, (token, id) => addRecurringPayment(token, id, input), { isWrite: true })
+    async addRecurringPayment(input, next) {
+      await fetchWithRefresh(accessToken, (token, id) => addRecurringPayment(token, id, input, next), { isWrite: true })
     },
     async updateRecurringPayment(original, input) {
       await fetchWithRefresh(accessToken, (token, id) => updateRecurringPayment(token, id, original, input), { isWrite: true })

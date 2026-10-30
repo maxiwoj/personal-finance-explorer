@@ -698,7 +698,8 @@ function toRecurringRow(payment: RecurringPayment): (string | number)[] {
   ]
 }
 
-export async function addRecurringPayment(accessToken: string, spreadsheetId: string, input: RecurringPaymentInput): Promise<void> {
+// next defaults to the start; a payment set up from a transaction already paid passes a later one
+export async function addRecurringPayment(accessToken: string, spreadsheetId: string, input: RecurringPaymentInput, next = input.start): Promise<void> {
   const spreadsheetUrl = `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}`
 
   if (await fetchRecurringPayments(accessToken, spreadsheetId) === null) {
@@ -712,7 +713,7 @@ export async function addRecurringPayment(accessToken: string, spreadsheetId: st
     })
   }
 
-  const payment = { ...input, id: crypto.randomUUID(), next: input.start }
+  const payment = { ...input, id: crypto.randomUUID(), next }
   await sheetsRequest(accessToken, `${spreadsheetUrl}/values/${encodeURIComponent(`${SHEETS.RECURRING}!A:J`)}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     body: JSON.stringify({ values: [toRecurringRow(payment)] }),

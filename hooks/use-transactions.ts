@@ -294,8 +294,8 @@ export function useRecurringActions() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['recurring-payments', provider.mode] })
 
   return {
-    addRecurringPayment: async (input: RecurringPaymentInput) => {
-      await provider.addRecurringPayment(input)
+    addRecurringPayment: async (input: RecurringPaymentInput, next?: StartDate) => {
+      await provider.addRecurringPayment(input, next)
       await invalidate()
     },
     updateRecurringPayment: async (original: RecurringPayment, input: RecurringPaymentInput) => {

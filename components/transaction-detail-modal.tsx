@@ -24,10 +24,12 @@ import {
 import { useDeleteTransaction, useDefaultCurrency } from '@/hooks/use-transactions'
 import { TransactionForm } from '@/components/transaction-form'
 import { ReturnForm } from '@/components/return-form'
+import { RecurringPaymentForm } from '@/components/recurring-payment-form'
+import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { recordedAmount, returnableAmount } from '@/lib/returns'
 import { removeOutboxEntry, retryOutboxEntries } from '@/lib/outbox'
 import { formatSheetTimestamp } from '@/lib/sheets'
-import { Calendar, CloudOff, Copy, CreditCard, Tag, FileText, Clock, Hash, Pencil, RefreshCw, StickyNote, Trash2, Undo2 } from 'lucide-react'
+import { Calendar, CloudOff, Copy, CreditCard, Tag, FileText, Clock, Hash, Pencil, RefreshCw, Repeat, StickyNote, Trash2, Undo2 } from 'lucide-react'
 
 interface TransactionDetailModalProps {
   transaction: Transaction | null
@@ -61,7 +63,8 @@ function formatAmount(value: number) {
 
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
   const defaultCurrency = useDefaultCurrency()
-  const [mode, setMode] = useState<'view' | 'edit' | 'return'>('view')
+  const provider = useFinanceDataProvider()
+  const [mode, setMode] = useState<'view' | 'edit' | 'return' | 'recurring'>('view')
   // The transaction itself, or one of its returns, awaiting confirmation
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -127,7 +130,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
         <DialogHeader className="p-4 pb-2 border-b bg-muted/30">
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-primary" />
-            {mode === 'edit' ? 'Edit Transaction' : mode === 'return' ? 'Record Return' : 'Transaction Details'}
+            {mode === 'edit' ? 'Edit Transaction' : mode === 'return' ? 'Record Return' : mode === 'recurring' ? 'Make Recurring' : 'Transaction Details'}
           </DialogTitle>
         </DialogHeader>
 
@@ -138,6 +141,10 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
         ) : mode === 'return' ? (
           <div className="p-4">
             <ReturnForm purchase={transaction} onSaved={() => handleClose()} onCancel={() => setMode('view')} />
+          </div>
+        ) : mode === 'recurring' ? (
+          <div className="p-4">
+            <RecurringPaymentForm from={transaction} onSaved={() => handleClose()} onCancel={() => setMode('view')} />
           </div>
         ) : (
         <div className="p-4 space-y-4">
@@ -285,6 +292,12 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => setMode('return')}>
                 <Undo2 className="h-3.5 w-3.5" />
                 Return
+              </Button>
+            )}
+            {/* A return is never recurring; recurring payments need a Google Sheet */}
+            {!transaction.returnOf && provider.mode === 'google' && (
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => setMode('recurring')} aria-label="Make recurring" title="Make recurring">
+                <Repeat className="h-3.5 w-3.5" />
               </Button>
             )}
             <Button variant="outline" size="sm" className="gap-2 text-destructive hover:text-destructive" onClick={() => setPendingDelete(transaction)} aria-label="Delete">

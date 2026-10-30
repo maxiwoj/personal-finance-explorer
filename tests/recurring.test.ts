@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { draftTransaction, draftTransactionId, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
+import { nextAfterToday, draftTransaction, draftTransactionId, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
 
 const d = (year: number, month: number, day: number) => ({ year, month, day })
 
@@ -43,6 +43,17 @@ describe('occurrenceOnOrAfter', () => {
 
   it('moves past the given date', () => {
     assert.deepEqual(occurrenceAfter(PAYMENT, d(2026, 2, 28)), d(2026, 3, 31))
+  })
+})
+
+describe('nextAfterToday', () => {
+  it('skips today and earlier dates', () => {
+    assert.deepEqual(nextAfterToday(PAYMENT, d(2026, 1, 31)), d(2026, 2, 28))
+    assert.deepEqual(nextAfterToday(PAYMENT, d(2026, 4, 15)), d(2026, 4, 30))
+  })
+
+  it('keeps a later start', () => {
+    assert.deepEqual(nextAfterToday(PAYMENT, d(2026, 1, 1)), d(2026, 1, 31))
   })
 })
 

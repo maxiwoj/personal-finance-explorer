@@ -4,7 +4,10 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useCategories, useCurrencies, useRecentTransactions, useRecurringActions } from '@/hooks/use-transactions'
 import { AMOUNT_PATTERN, byFrequency, ChipPicker } from '@/components/transaction-form'
 import { getCategoryColor } from '@/lib/colors'
-import { dayOf, isoDate, RECURRING_UNITS, validateRecurringInput, type RecurringPayment, type RecurringUnit } from '@/lib/recurring'
+import { formatDate } from '@/lib/currencies'
+import { dayOf, isoDate, nextAfterToday, parseIsoDate, RECURRING_UNITS, validateRecurringInput, type RecurringPayment, type RecurringUnit } from '@/lib/recurring'
+import { recordedAmount } from '@/lib/returns'
+import type { Transaction } from '@/lib/types'
 import { parseMoney } from '@/lib/sheets'
 import { useUnsavedInput } from '@/lib/unsaved-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -17,12 +20,14 @@ import { AlertCircle } from 'lucide-react'
 interface RecurringPaymentFormProps {
   // Edits this payment when set, otherwise adds a new one
   original?: RecurringPayment
+  // Sets up a new payment from this transaction, which counts as paid: drafts start after today
+  from?: Transaction
   onSaved: () => void
   onCancel: () => void
 }
 
 // The same fields as a transaction, plus how often it repeats and from when
-export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringPaymentFormProps) {
+export function RecurringPaymentForm({ original, from, onSaved, onCancel }: RecurringPaymentFormProps) {
   const { data: transactions } = useRecentTransactions()
   const { data: categoryList } = useCategories()
   const { data: currencyList } = useCurrencies()
@@ -33,8 +38,9 @@ export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringP
     const values = categoryList?.length
       ? categoryList.filter(c => !c.hidden).map(c => c.name)
       : [...new Set((transactions ?? []).map(t => t.category))].sort()
-    return original && !values.includes(original.category) ? [...values, original.category] : values
-  }, [categoryList, original, transactions])
+    const own = original?.category ?? from?.category
+    return own && !values.includes(own) ? [...values, own] : values
+  }, [categoryList, from, original, transactions])
 
   // Only currencies the sheet converts, most used first
   const currencies = useMemo(() => {
@@ -42,18 +48,20 @@ export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringP
     const values = currencyList
       ? [...used.filter(code => currencyList.currencies.some(c => c.code === code)), ...currencyList.currencies.map(c => c.code).filter(code => !used.includes(code))]
       : used
-    if (original && !values.includes(original.currency)) return [original.currency, ...values]
+    const own = original?.currency ?? from?.currency
+    if (own && !values.includes(own)) return [own, ...values]
     return values.length > 0 ? values : [currencyList?.defaultCurrency ?? 'PLN']
-  }, [currencyList, original, transactions])
+  }, [currencyList, from, original, transactions])
 
   const [initial] = useState(() => ({
-    amount: original ? String(original.amount) : '',
-    what: original?.what ?? '',
-    category: original?.category ?? '',
-    currency: original?.currency ?? null,
+    // A purchase's own amount, before any returns
+    amount: original ? String(original.amount) : from ? String(recordedAmount(from).amountOriginal) : '',
+    what: original?.what ?? from?.what ?? '',
+    category: original?.category ?? from?.category ?? '',
+    currency: original?.currency ?? from?.currency ?? null,
     every: original ? String(original.every) : '1',
     unit: original?.unit ?? 'month' as RecurringUnit,
-    start: isoDate(original?.start ?? dayOf(new Date())),
+    start: isoDate(original?.start ?? (from ? dayOf(from.timestamp) : dayOf(new Date()))),
     end: original?.end ? isoDate(original.end) : '',
   }))
   const [amount, setAmount] = useState(initial.amount)
@@ -73,6 +81,12 @@ export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringP
   )
 
   const effectiveCurrency = currency ?? currencies[0]
+  // Shown when setting up from a transaction, so it is clear no drafts come for past dates
+  const parsedStart = parseIsoDate(start)
+  const everyNumber = Number(every)
+  const firstDraft = from && parsedStart && Number.isInteger(everyNumber) && everyNumber >= 1
+    ? nextAfterToday({ start: parsedStart, every: everyNumber, unit }, dayOf(new Date()))
+    : null
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -99,7 +113,7 @@ export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringP
       if (original) {
         await updateRecurringPayment(original, result)
       } else {
-        await addRecurringPayment(result)
+        await addRecurringPayment(result, from ? nextAfterToday(result, dayOf(new Date())) : undefined)
       }
       onSaved()
     } catch (saveError) {
@@ -152,6 +166,12 @@ export function RecurringPaymentForm({ original, onSaved, onCancel }: RecurringP
           <Input id="recurring-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-11" />
         </div>
       </div>
+
+      {from && (
+        <p className="text-xs text-muted-foreground">
+          This transaction and any dates up to today count as paid{firstDraft && `; the first draft is on ${formatDate(firstDraft)}`}.
+        </p>
+      )}
 
       {original && (
         <p className="text-xs text-muted-foreground">
