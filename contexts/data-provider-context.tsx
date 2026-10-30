@@ -8,7 +8,7 @@ import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { createQueryPersister } from '@/lib/cache'
 import { PERSIST_BUSTER, PERSIST_MAX_AGE_MS, persistScopeKey, shouldPersistQuery } from '@/lib/query-persistence'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, addRecurringPayment, linkTransactionToRecurring, appendCategory, approveRecurringDraft, deleteRecurringPayment, fetchRecurringPayments, skipRecurringDraft, updateRecurringPayment, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, addRecurringPayment, endRecurringPayment, linkTransactionToRecurring, appendCategory, approveRecurringDraft, deleteRecurringPayment, fetchRecurringPayments, skipRecurringDraft, updateRecurringPayment, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
 import { enqueueTransaction, getKnownStoredIds, requestOutboxSync, setKnownStoredIds } from '@/lib/outbox'
 import { classifySyncError } from '@/lib/outbox-sync'
 import { useOutboxSync, useTrackSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
@@ -61,6 +61,8 @@ export interface FinanceDataProvider {
   // Sets an existing transaction's column K to a recurring payment's date
   linkTransactionToRecurring: (original: Transaction, link: string) => Promise<void>
   updateRecurringPayment: (original: RecurringPayment, input: RecurringPaymentInput) => Promise<void>
+  // Sets the end to the day before the next date: no more drafts, links kept
+  endRecurringPayment: (original: RecurringPayment) => Promise<void>
   deleteRecurringPayment: (original: RecurringPayment) => Promise<void>
   // Adds a due payment as a transaction and moves the payment to its next date
   approveRecurringDraft: (draft: RecurringDraft) => Promise<void>
@@ -255,6 +257,9 @@ function buildGoogleProvider(
     async updateRecurringPayment(original, input) {
       await fetchWithRefresh(accessToken, (token, id) => updateRecurringPayment(token, id, original, input), { isWrite: true })
     },
+    async endRecurringPayment(original) {
+      await fetchWithRefresh(accessToken, (token, id) => endRecurringPayment(token, id, original), { isWrite: true })
+    },
     async deleteRecurringPayment(original) {
       await fetchWithRefresh(accessToken, (token, id) => deleteRecurringPayment(token, id, original), { isWrite: true })
     },
@@ -335,6 +340,9 @@ function buildDemoProvider(): FinanceDataProvider {
       throw new Error(demoModeMessage('Recurring payments'))
     },
     async updateRecurringPayment() {
+      throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async endRecurringPayment() {
       throw new Error(demoModeMessage('Recurring payments'))
     },
     async deleteRecurringPayment() {

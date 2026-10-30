@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { nextAfterToday, recurringSourceOf, draftTransaction, draftLink, parseOccurrenceLink, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
+import { canEnd, endedPayment, hasEnded, nextAfterToday, recurringSourceOf, draftTransaction, draftLink, parseOccurrenceLink, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
 
 const d = (year: number, month: number, day: number) => ({ year, month, day })
 
@@ -54,6 +54,20 @@ describe('nextAfterToday', () => {
 
   it('keeps a later start', () => {
     assert.deepEqual(nextAfterToday(PAYMENT, d(2026, 1, 1)), d(2026, 1, 31))
+  })
+})
+
+describe('ending', () => {
+  it('ends the day before the next date', () => {
+    const ended = endedPayment({ ...PAYMENT, next: d(2026, 3, 31) })
+    assert.deepEqual(ended.end, d(2026, 3, 30))
+    assert.equal(hasEnded(ended), true)
+    assert.equal(canEnd(ended), false)
+  })
+
+  it('is only offered once a date was handled', () => {
+    assert.equal(canEnd(PAYMENT), false)
+    assert.equal(canEnd({ ...PAYMENT, next: d(2026, 2, 28) }), true)
   })
 })
 

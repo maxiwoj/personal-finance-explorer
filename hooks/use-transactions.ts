@@ -311,6 +311,10 @@ export function useRecurringActions() {
       await provider.updateRecurringPayment(original, input)
       await invalidate()
     },
+    endRecurringPayment: async (original: RecurringPayment) => {
+      await provider.endRecurringPayment(original)
+      await invalidate()
+    },
     deleteRecurringPayment: async (original: RecurringPayment) => {
       await provider.deleteRecurringPayment(original)
       await invalidate()

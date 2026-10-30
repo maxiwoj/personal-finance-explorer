@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { useRecurringActions, useRecurringPayments } from '@/hooks/use-transactions'
 import { RecurringPaymentForm } from '@/components/recurring-payment-form'
@@ -21,8 +21,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { SHEETS } from '@/lib/config'
 import { getCategoryColor } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import { formatDate } from '@/lib/currencies'
-import { compareDates, dayOf, describeSchedule, hasEnded, type RecurringPayment } from '@/lib/recurring'
+import { canEnd, compareDates, dayOf, describeSchedule, hasEnded, type RecurringPayment } from '@/lib/recurring'
 import { AlertCircle, Plus } from 'lucide-react'
 
 function errorMessage(error: unknown, fallback: string) {
@@ -32,25 +33,32 @@ function errorMessage(error: unknown, fallback: string) {
 export default function RecurringPaymentsPage() {
   const provider = useFinanceDataProvider()
   const { data: payments, isLoading, error } = useRecurringPayments()
-  const { deleteRecurringPayment } = useRecurringActions()
+  const { deleteRecurringPayment, endRecurringPayment } = useRecurringActions()
   // 'new' while adding, a payment while editing it
   const [editing, setEditing] = useState<RecurringPayment | 'new' | null>(null)
-  const [pendingDelete, setPendingDelete] = useState<RecurringPayment | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
+  // The payment to end or delete, awaiting confirmation
+  const [pending, setPending] = useState<{ payment: RecurringPayment; action: 'end' | 'delete' } | null>(null)
+  const [isWorking, setIsWorking] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const today = dayOf(new Date())
 
-  const handleDelete = async () => {
-    if (!pendingDelete) return
-    setIsDeleting(true)
+  // Ended payments last, so the ones still making drafts come first
+  const sorted = useMemo(
+    () => [...(payments ?? [])].sort((a, b) => Number(hasEnded(a)) - Number(hasEnded(b))),
+    [payments]
+  )
+
+  const handleConfirm = async () => {
+    if (!pending) return
+    setIsWorking(true)
     setActionError(null)
     try {
-      await deleteRecurringPayment(pendingDelete)
-    } catch (deleteError) {
-      setActionError(errorMessage(deleteError, 'Failed to delete the recurring payment.'))
+      await (pending.action === 'end' ? endRecurringPayment(pending.payment) : deleteRecurringPayment(pending.payment))
+    } catch (actionFailure) {
+      setActionError(errorMessage(actionFailure, `Failed to ${pending.action} the recurring payment.`))
     } finally {
-      setIsDeleting(false)
-      setPendingDelete(null)
+      setIsWorking(false)
+      setPending(null)
     }
   }
 
@@ -118,15 +126,15 @@ export default function RecurringPaymentsPage() {
               <AlertDescription>{actionError}</AlertDescription>
             </Alert>
           )}
-          {!payments?.length ? (
+          {!sorted.length ? (
             <p className="text-sm text-muted-foreground">No recurring payments yet.</p>
           ) : (
             <ul className="divide-y">
-              {payments.map(payment => {
+              {sorted.map(payment => {
                 const ended = hasEnded(payment)
                 const due = !ended && compareDates(payment.next, today) <= 0
                 return (
-                  <li key={payment.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                  <li key={payment.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 py-3', ended && 'text-muted-foreground')}>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate font-medium">{payment.what}</span>
@@ -147,7 +155,10 @@ export default function RecurringPaymentsPage() {
                     </span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" onClick={() => setEditing(payment)}>Edit</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setPendingDelete(payment)}>Delete</Button>
+                      {canEnd(payment) && (
+                        <Button size="sm" variant="ghost" onClick={() => setPending({ payment, action: 'end' })}>End</Button>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setPending({ payment, action: 'delete' })}>Delete</Button>
                     </div>
                   </li>
                 )
@@ -161,26 +172,28 @@ export default function RecurringPaymentsPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open && !isDeleting) setPendingDelete(null) }}>
+      <AlertDialog open={pending !== null} onOpenChange={(open) => { if (!open && !isWorking) setPending(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {pendingDelete?.what}?</AlertDialogTitle>
+            <AlertDialogTitle>{pending?.action === 'end' ? 'End' : 'Delete'} {pending?.payment.what}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Its row is removed from the &quot;{SHEETS.RECURRING}&quot; tab and no more drafts are made. Transactions it already added stay.
+              {pending?.action === 'end'
+                ? `No drafts are made from ${pending ? formatDate(pending.payment.next) : ''} on. It stays in the list as ended, and its transactions keep showing which payment they belong to. Clear the end date by editing it to resume.`
+                : `Its row is removed from the "${SHEETS.RECURRING}" tab and no more drafts are made. Transactions it already added stay, but no longer show which payment they belonged to.${pending && canEnd(pending.payment) ? ' To keep that, end it instead.' : ''}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isWorking}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isDeleting}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={isWorking}
+              className={cn(pending?.action === 'delete' && 'bg-destructive text-white hover:bg-destructive/90')}
               onClick={(event) => {
-                // Keep the dialog open until the deletion finishes
+                // Keep the dialog open until the change finishes
                 event.preventDefault()
-                void handleDelete()
+                void handleConfirm()
               }}
             >
-              {isDeleting ? 'Deleting...' : 'Delete'}
+              {isWorking ? 'Saving...' : pending?.action === 'end' ? 'End' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -129,6 +129,16 @@ export function rescheduledNext(previousNext: StartDate, input: RecurringPayment
   return occurrenceOnOrAfter(input, from)
 }
 
+// Ending keeps the payment and its transactions' links: it only stops new drafts, from the next
+// date on. Not offered before its first date is handled, when deleting loses nothing.
+export function canEnd(payment: RecurringPayment) {
+  return !hasEnded(payment) && compareDates(payment.next, payment.start) > 0
+}
+
+export function endedPayment(payment: RecurringPayment): RecurringPayment {
+  return { ...payment, end: addDays(payment.next, -1) }
+}
+
 export function hasEnded(payment: RecurringPayment) {
   return payment.end !== null && compareDates(payment.next, payment.end) > 0
 }
