@@ -6,7 +6,7 @@ The [template spreadsheet](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uF
 
 The sample timestamps in `expenses!A` are plain values, not formulas. A formula that generated them (such as an `ARRAYFORMULA` over `TODAY()`) broke as soon as the app edited or added a transaction: writing to column A collides with the formula's output and every date disappears.
 
-To keep the sample data recent, a [standalone Apps Script](https://script.google.com/d/1LDb7sMRhSAXnWfvzm0s3pfUlRbg-aEMBQxGYHTW1zxEt6SZxKCyCIf3O/edit?usp=sharing) runs once a day. It moves every timestamp forward by whole days so the newest transaction lands on today, keeping times of day and the gaps between transactions. Copies get the dates as of the last run and stay unchanged afterwards.
+To keep the sample data recent, a [standalone Apps Script](https://script.google.com/d/1LDb7sMRhSAXnWfvzm0s3pfUlRbg-aEMBQxGYHTW1zxEt6SZxKCyCIf3O/edit?usp=sharing) runs once a day. It moves every timestamp forward by whole days so the newest transaction lands on today, keeping times of day and the gaps between transactions. The sample [recurring payments](./recurring-payments.md) move by the same number of days, so their drafts stay as current as the transactions. Copies get the dates as of the last run and stay unchanged afterwards.
 
 The script is standalone (created at [script.google.com](https://script.google.com), not from the sheet), so the template has no script attached and copying it shows no Apps Script warning.
 
@@ -15,6 +15,8 @@ The script is standalone (created at [script.google.com](https://script.google.c
 - Never open **Extensions → Apps Script** or **Extensions → Macros** on the template. Doing so attaches a script project to it, and every copy then warns about it. If the warning comes back, delete the attached project from the [Apps Script dashboard](https://script.google.com/home).
 - Keep `expenses!A` as values. Paste new sample rows as values, in the `DD/MM/YYYY HH:MM:SS` format.
 - Don't add sample rows dated after today: the script only moves dates forward, from the newest one.
+- Keep the recurring samples in step with the transactions: a payment whose `Next` (`recurring!I`) is the newest transaction's day shows a draft due today in every copy, and one with a later `Next` shows as upcoming. Sample transactions linked to a payment in `expenses!K` must be on its earlier dates, never on `Next`: `Next` is the first date not yet handled, and approving it would skip a date that already has a linked row. The script moves `Start`, `Next` and `End` (H:J) and the dates in `expenses!K` links by the same days, so a moved `Next` never matches a link left on an old date (approving would then skip it as already added).
+- `expenses2` must include column K (its formula's range extended to `K`), and `expenses!K1` reads `Recurring`; see [Recurring column](./migrations/recurring-column.md).
 - The shifted dates must stay within the `currencyDates` range (from `DATE(2025, 11, 1)`, see [Currencies](./currencies.md)), or `AmountPLN` can't convert the oldest rows.
 
 ### Setup
@@ -31,6 +33,7 @@ If `AmountPLN` shows `#N/A` for the newest rows, today's exchange rate isn't loa
 ```js
 const TEMPLATE_ID = 'PUT_SHEET_ID_HERE';
 const SHEET_NAME = 'expenses';
+const RECURRING_SHEET_NAME = 'recurring';
 const DAY_MS = 86400000;
 // 0 = newest transaction lands on today; 1 = yesterday (use if AmountPLN shows #N/A for the newest rows)
 const DAYS_BEFORE_TODAY = 0;
@@ -44,14 +47,56 @@ function parseText(s) {
   return m ? new Date(+m[3], m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) : null;
 }
 
+const pad = n => String(n).padStart(2, '0');
+
 function formatText(d) {
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// YYYY-MM-DD, the app's format for recurring dates and expenses!K links
+const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+function addDays(d, days) {
+  const moved = new Date(d.getTime());
+  moved.setDate(moved.getDate() + days); // calendar days, so DST doesn't move the time
+  return moved;
+}
+
+// A recurring date cell: a date, or text as YYYY-MM-DD or DD/MM/YYYY
+function parseDay(v) {
+  if (isDate(v)) return v;
+  const iso = String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return iso ? new Date(+iso[1], iso[2] - 1, +iso[3]) : parseText(v);
+}
+
+// Moves the recurring payments' Start, Next and End (H:J), and the dates in expenses!K links
+// ("<payment ID>@YYYY-MM-DD"), by the same days as the transactions
+function shiftRecurring(spreadsheet, expenses, shift) {
+  const recurring = spreadsheet.getSheetByName(RECURRING_SHEET_NAME);
+  if (recurring && recurring.getLastRow() >= 2) {
+    const range = recurring.getRange(2, 8, recurring.getLastRow() - 1, 3);
+    range.setValues(range.getValues().map(row => row.map(v => {
+      const d = v === '' ? null : parseDay(v);
+      if (!d) return v;
+      const moved = addDays(d, shift);
+      // keep each cell's original type and format
+      return isDate(v) ? moved : /^\d{4}-/.test(String(v).trim()) ? isoDay(moved) : formatText(moved).slice(0, 10);
+    })));
+    Logger.log(`Shifted ${recurring.getLastRow() - 1} recurring payments`);
+  }
+
+  if (expenses.getMaxColumns() < 11 || expenses.getLastRow() < 2) return;
+  const links = expenses.getRange(2, 11, expenses.getLastRow() - 1, 1);
+  links.setValues(links.getValues().map(([v]) => {
+    const m = String(v).trim().match(/^(.+)@(\d{4})-(\d{2})-(\d{2})$/);
+    return [m ? `${m[1]}@${isoDay(addDays(new Date(+m[2], m[3] - 1, +m[4]), shift))}` : v];
+  }));
 }
 
 // Shifts all sample timestamps so the newest one lands on the target day, keeping times of day
 function shiftDemoDates() {
-  const sheet = SpreadsheetApp.openById(TEMPLATE_ID).getSheetByName(SHEET_NAME);
+  const spreadsheet = SpreadsheetApp.openById(TEMPLATE_ID);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) throw new Error(`No tab named "${SHEET_NAME}"`);
 
   const last = sheet.getLastRow();
@@ -86,10 +131,10 @@ function shiftDemoDates() {
   range.setValues(values.map((v, i) => {
     const d = parsed[i];
     if (!d) return [v];
-    const moved = new Date(d.getTime());
-    moved.setDate(moved.getDate() + shift); // calendar days, so DST doesn't move the time
+    const moved = addDays(d, shift);
     return [isDate(v) ? moved : formatText(moved)]; // keep each cell's original type
   }));
   Logger.log(`Shifted ${dates.length} rows`);
+  shiftRecurring(spreadsheet, sheet, shift);
 }
 ```
