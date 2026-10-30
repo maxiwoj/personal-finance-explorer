@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { applyUpdate, checkForUpdates, useUpdateStatus, type UpdateStatus } from '@/lib/app-update'
+import { OutboxStatusBar, useSignOutWithWarning } from '@/components/outbox-status'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -61,7 +62,8 @@ const UPDATE_MESSAGES: Record<Exclude<UpdateStatus, 'idle'>, string> = {
 
 export function Nav() {
   const pathname = usePathname()
-  const { signOut, isExpiring, isOffline, refreshSession, mode, email } = useAuth()
+  const { isExpiring, isOffline, refreshSession, mode, email } = useAuth()
+  const { requestSignOut, dialog: signOutDialog } = useSignOutWithWarning()
   const { spreadsheet, changeSpreadsheet } = useSpreadsheet()
   const reloadFinanceData = useReloadFinanceData()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -117,7 +119,7 @@ export function Nav() {
           <Download className="h-4 w-4" />
           Check for updates
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={signOut}>
+        <DropdownMenuItem onSelect={requestSignOut}>
           <LogOut className="h-4 w-4" />
           Sign Out
         </DropdownMenuItem>
@@ -143,6 +145,7 @@ export function Nav() {
           <span>Offline</span>
         </div>
       )}
+      <OutboxStatusBar />
       {updateStatus !== 'idle' && (
         <div className="bg-muted text-muted-foreground px-4 py-1 text-xs font-medium flex items-center justify-center gap-2">
           <Download className="h-3 w-3" />
@@ -235,6 +238,7 @@ export function Nav() {
           </Button>
         </nav>
       )}
+      {signOutDialog}
     </header>
   )
 }

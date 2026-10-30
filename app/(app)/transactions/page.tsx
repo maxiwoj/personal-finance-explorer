@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useFullTransactions, useDefaultCurrency } from '@/hooks/use-transactions'
+import { useFullTransactions, useDefaultCurrency, useTransactionsWithOutbox } from '@/hooks/use-transactions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
@@ -21,7 +21,9 @@ const ALL_VALUE = '__all__'
 
 export default function TransactionsPage() {
   const defaultCurrency = useDefaultCurrency()
-  const { data: transactions, isLoading, error } = useFullTransactions()
+  const { data, dataUpdatedAt, isLoading, error } = useFullTransactions()
+  // Transactions saved on this device and not yet in the sheet are listed too, marked unsynced
+  const transactions = useTransactionsWithOutbox(data, dataUpdatedAt)
   const { filters, resetFilters } = useFilters()
   const { selectedMonths, selectedYears, selectedDateRange } = filters
 

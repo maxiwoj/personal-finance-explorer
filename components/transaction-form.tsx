@@ -21,7 +21,8 @@ import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 interface TransactionFormProps {
   // Edits this transaction when set, otherwise adds a new one
   original?: Transaction
-  onSaved: (input: TransactionInput) => void
+  // outboxId: set when a new transaction was queued to sync in the background
+  onSaved: (input: TransactionInput, outboxId?: string) => void
   onCancel?: () => void
 }
 
@@ -398,7 +399,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
     setError(null)
     setIsSaving(true)
     try {
-      await saveTransaction(result, original)
+      const { outboxId } = await saveTransaction(result, original)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not
       // fatal. A new transaction doesn't wait for it, so the saved screen shows at once, also offline.
       const listed = categoryList?.find(c => c.name === result.category.toLowerCase())
@@ -419,7 +420,7 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
           return
         }
       }
-      onSaved(result)
+      onSaved(result, outboxId)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save the transaction.')
     } finally {

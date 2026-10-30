@@ -1,3 +1,5 @@
+import type { OutboxStatus } from './outbox-sync'
+
 export type Transaction = {
   timestamp: Date
   what: string
@@ -18,6 +20,9 @@ export type Transaction = {
   // them, and recorded holds the purchase's own amounts as in the sheet
   returns?: Transaction[]
   recorded?: { amountOriginal: number; amountPLN: number }
+  // Set on a transaction saved on this device and not yet in the sheet (lib/outbox-view.ts);
+  // error is why the last sync attempt failed
+  unsynced?: { status: OutboxStatus; error: string | null }
 }
 
 // A row of the optional categories tab; its order is the order shown when adding
