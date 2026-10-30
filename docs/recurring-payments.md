@@ -17,11 +17,11 @@ A payment you just made can become a recurring one, so you don't enter it twice:
 - **On the Add page**, tick **Repeats** and choose how often (every N days, weeks, months or years). Saving sets up the recurring payment first, then adds the transaction. The transaction is the payment's first date, already paid, so drafts start with the next date. An end date can be set later on the Recurring payments page. The box needs a connection: offline, the transaction still saves, just not as recurring.
 - **From a transaction's details**, the **Make recurring** button (↻) opens the recurring payment form filled in from the transaction, starting on its date. That transaction and any dates up to today count as paid, so no drafts show for the months in between; the form shows the first draft's date.
 
-The transaction and the recurring payment are not linked: the payment only records which date comes next. Editing or deleting one leaves the other unchanged.
+The transaction and the recurring payment are not linked: the payment only records which date comes next. Editing or deleting one leaves the other unchanged. A transaction added by approving a draft is the exception, on sheets with [stored transaction IDs](./migrations/stable-transaction-ids.md): its ID names the payment, so its details show **From recurring payment** instead of **Make recurring**.
 
 ## Drafts
 
-A payment is due once its next date is today or earlier. It then shows as a draft, one per payment: first in **Recent Activity** on the dashboard, marked **Draft**, and under **Draft transactions** on the **Transactions** page. Each shows how many later dates are also due (e.g. after a few months away).
+A payment is due once its next date is today or earlier. It then shows as a draft, one per payment, marked **Draft**: first in **Recent Activity** and at the top of **Recent Transactions** on the dashboard (tap one to approve or remove it), and under **Draft transactions** on the **Transactions** page, which also says how many later dates are due (e.g. after a few months away). Drafts don't count towards the dashboard's totals.
 
 - **Approve** adds the transaction to `expenses` and moves the payment to its next date. The next draft then shows if that date is due too. Approved on its due day, the transaction gets the current time, so it is the newest one, like any you just added; approved later, it gets 23:59:59 on its due day, the last transaction of that day.
 - **Remove** moves the payment to its next date without adding a transaction.

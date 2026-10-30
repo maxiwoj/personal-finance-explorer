@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { nextAfterToday, draftTransaction, draftTransactionId, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
+import { nextAfterToday, recurringSourceOf, draftTransaction, draftTransactionId, dueDrafts, occurrence, occurrenceAfter, occurrenceOnOrAfter, parseRecurringRows, RECURRING_HEADER, rescheduledNext, validateRecurringInput, type RecurringFields, type RecurringPayment } from '../lib/recurring.ts'
 
 const d = (year: number, month: number, day: number) => ({ year, month, day })
 
@@ -99,6 +99,14 @@ describe('draftTransaction', () => {
   it('gets the current time when approved on its day', () => {
     const now = new Date(2026, 1, 28, 9, 15, 30)
     assert.deepEqual(draftTransaction(draft, now).timestamp, now)
+  })
+})
+
+describe('recurringSourceOf', () => {
+  it('finds the payment an approved draft came from', () => {
+    assert.equal(recurringSourceOf('rent-2026-02-28', [PAYMENT]), PAYMENT)
+    assert.equal(recurringSourceOf('rent', [PAYMENT]), null)
+    assert.equal(recurringSourceOf('other-2026-02-28', [PAYMENT]), null)
   })
 })
 

@@ -439,7 +439,7 @@ export default function DashboardPage() {
           <CardDescription>Last 20 transactions in selected period</CardDescription>
         </CardHeader>
         <CardContent>
-          <TransactionsTable transactions={filteredTransactions} limit={20} />
+          <TransactionsTable transactions={filteredTransactions} limit={20} drafts={drafts} />
         </CardContent>
       </Card>
 

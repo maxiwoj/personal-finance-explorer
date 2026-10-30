@@ -5,6 +5,8 @@ import type { Transaction } from '@/lib/types'
 import { getCategoryColor } from '@/lib/colors'
 import { TransactionDetailModal } from './transaction-detail-modal'
 import { TransactionIndicators } from './transaction-indicators'
+import { DraftBadge, RecurringDraftDialog } from './recurring-drafts'
+import { draftTransactionId, type RecurringDraft } from '@/lib/recurring'
 import { useDefaultCurrency } from '@/hooks/use-transactions'
 import {
   Pagination,
@@ -27,6 +29,8 @@ interface TransactionsTableProps {
   showCategory?: boolean
   limit?: number
   sortBy?: 'date' | 'amount'
+  // Due recurring payments, listed first on the first page and marked as drafts to approve
+  drafts?: RecurringDraft[]
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
@@ -55,9 +59,10 @@ function buildPageNumbers(currentPage: number, totalPages: number): number[] {
   return Array.from({ length: 5 }, (_, index) => currentPage - 2 + index)
 }
 
-export function TransactionsTable({ transactions, showCategory = true, limit, sortBy = 'date' }: TransactionsTableProps) {
+export function TransactionsTable({ transactions, showCategory = true, limit, sortBy = 'date', drafts = [] }: TransactionsTableProps) {
   const defaultCurrency = useDefaultCurrency()
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  const [selectedDraft, setSelectedDraft] = useState<RecurringDraft | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(limit ?? 20)
 
@@ -87,6 +92,7 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
   const startIndex = (currentPageSafe - 1) * pageSize
   const displayed = sorted.slice(startIndex, startIndex + pageSize)
   const pageNumbers = buildPageNumbers(currentPageSafe, totalPages)
+  const displayedDrafts = currentPageSafe === 1 ? drafts : []
 
   useEffect(() => {
     setPageSize(limit ?? 20)
@@ -148,6 +154,36 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
               </tr>
             </thead>
             <tbody>
+              {displayedDrafts.map((draft) => (
+                <tr
+                  key={draftTransactionId(draft)}
+                  className="border-b border-dashed bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors"
+                  onClick={() => setSelectedDraft(draft)}
+                >
+                  <td className="py-3 text-muted-foreground whitespace-nowrap">
+                    {formatDateOnly(new Date(draft.date.year, draft.date.month - 1, draft.date.day))}
+                  </td>
+                  <td className="py-3 max-w-[200px]" title={draft.payment.what}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{draft.payment.what}</span>
+                      <DraftBadge className="shrink-0" />
+                    </div>
+                  </td>
+                  {showCategory && (
+                    <td className="py-3">
+                      <span
+                        className="inline-block px-2 py-1 text-xs rounded-full text-white"
+                        style={{ backgroundColor: getCategoryColor(draft.payment.category) }}
+                      >
+                        {draft.payment.category}
+                      </span>
+                    </td>
+                  )}
+                  <td className="py-3 text-right whitespace-nowrap font-bold">
+                    {draft.payment.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {draft.payment.currency}
+                  </td>
+                </tr>
+              ))}
               {displayed.map((t, index) => (
                 <tr
                   key={`${t.transactionId}-${startIndex + index}`}
@@ -189,6 +225,37 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
           </table>
 
           <div className="space-y-3 md:hidden">
+            {displayedDrafts.map((draft) => (
+              <button
+                key={draftTransactionId(draft)}
+                type="button"
+                className="w-full rounded-lg border border-dashed border-primary/60 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
+                onClick={() => setSelectedDraft(draft)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {formatDateOnly(new Date(draft.date.year, draft.date.month - 1, draft.date.day))}
+                    </div>
+                    <div className="break-words text-sm font-medium text-foreground leading-tight">
+                      {draft.payment.what}
+                      <DraftBadge className="ml-1.5 align-middle" />
+                    </div>
+                    {showCategory && (
+                      <span
+                        className="inline-flex max-w-full rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                        style={{ backgroundColor: getCategoryColor(draft.payment.category) }}
+                      >
+                        <span className="truncate">{draft.payment.category}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right text-sm font-bold whitespace-nowrap">
+                    {draft.payment.amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {draft.payment.currency}
+                  </div>
+                </div>
+              </button>
+            ))}
             {displayed.map((t, index) => (
               <button
                 key={`${t.transactionId}-${startIndex + index}`}
@@ -229,7 +296,7 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
             ))}
           </div>
 
-          {displayed.length === 0 && (
+          {displayed.length === 0 && displayedDrafts.length === 0 && (
             <p className="py-8 text-center text-muted-foreground">No transactions found</p>
           )}
         </div>
@@ -281,6 +348,8 @@ export function TransactionsTable({ transactions, showCategory = true, limit, so
           </Pagination>
         )}
       </div>
+
+      <RecurringDraftDialog draft={selectedDraft} onClose={() => setSelectedDraft(null)} />
 
       <TransactionDetailModal
         transaction={selectedTransaction}

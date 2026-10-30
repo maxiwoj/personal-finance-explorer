@@ -8,7 +8,7 @@ import { Transaction } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Wallet, ArrowRight } from 'lucide-react'
 import { TransactionIndicators } from './transaction-indicators'
-import { RecurringDraftCard } from './recurring-drafts'
+import { DraftBadge, dueLabel, RecurringDraftDialog } from './recurring-drafts'
 import { draftTransactionId, type RecurringDraft } from '@/lib/recurring'
 
 interface RecentTransactionsCarouselProps {
@@ -27,6 +27,7 @@ export function RecentTransactionsCarousel({
   drafts = [],
   onTransactionClick,
 }: RecentTransactionsCarouselProps) {
+  const [selectedDraft, setSelectedDraft] = React.useState<RecurringDraft | null>(null)
   // Take the most recent transactions based on the limit
   const recentTransactions = React.useMemo(() => {
     return [...transactions]
@@ -63,9 +64,38 @@ export function RecentTransactionsCarousel({
       
       {/* Native horizontal scroll for better desktop/trackpad experience */}
       <div className="w-full overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory flex gap-3 scroll-smooth">
+        {/* Same size as a transaction card; a dashed outline (which takes no space) and the badge mark it as a draft */}
         {drafts.map((draft) => (
           <div key={draftTransactionId(draft)} className="basis-[85%] sm:basis-[45%] lg:basis-[30%] shrink-0 snap-start">
-            <RecurringDraftCard draft={draft} />
+            <Card
+              className="border-none bg-muted/50 hover:bg-muted/80 transition-all cursor-pointer active:scale-[0.98] group py-0 gap-0 outline-1 outline-dashed outline-primary/60 -outline-offset-1"
+              onClick={() => setSelectedDraft(draft)}
+            >
+              <CardContent className="p-3.5">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-sm font-semibold leading-tight truncate group-hover:text-primary transition-colors">
+                      {draft.payment.what}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <DraftBadge />
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{dueLabel(draft)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold leading-none">
+                      {draft.payment.amount.toLocaleString('pl-PL', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tighter mt-1">
+                      {draft.payment.currency}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         ))}
         {recentTransactions.map((transaction) => (
@@ -112,6 +142,7 @@ export function RecentTransactionsCarousel({
           </div>
         ))}
       </div>
+      <RecurringDraftDialog draft={selectedDraft} onClose={() => setSelectedDraft(null)} />
     </div>
   )
 }

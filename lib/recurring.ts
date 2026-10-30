@@ -168,6 +168,13 @@ export function draftTransactionId(draft: Pick<RecurringDraft, 'payment' | 'date
   return `${draft.payment.id}-${isoDate(draft.date)}`
 }
 
+// The payment an approved draft came from, read from its transaction ID (draftTransactionId).
+// Only sheets with stored IDs keep that ID; other transactions have no recorded payment.
+export function recurringSourceOf(transactionId: string, payments: RecurringPayment[]): RecurringPayment | null {
+  const match = transactionId.match(/^(.+)-\d{4}-\d{2}-\d{2}$/)
+  return (match && payments.find(payment => payment.id === match[1])) || null
+}
+
 export function describeSchedule({ every, unit }: Pick<RecurringPaymentInput, 'every' | 'unit'>) {
   return every === 1 ? `Every ${unit}` : `Every ${every} ${unit}s`
 }

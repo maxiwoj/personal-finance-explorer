@@ -21,7 +21,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useDeleteTransaction, useDefaultCurrency } from '@/hooks/use-transactions'
+import { useDeleteTransaction, useDefaultCurrency, useRecurringPayments } from '@/hooks/use-transactions'
+import { describeSchedule, recurringSourceOf } from '@/lib/recurring'
 import { TransactionForm } from '@/components/transaction-form'
 import { ReturnForm } from '@/components/return-form'
 import { RecurringPaymentForm } from '@/components/recurring-payment-form'
@@ -64,6 +65,7 @@ function formatAmount(value: number) {
 export function TransactionDetailModal({ transaction, open, onClose }: TransactionDetailModalProps) {
   const defaultCurrency = useDefaultCurrency()
   const provider = useFinanceDataProvider()
+  const { data: recurringPayments } = useRecurringPayments()
   const [mode, setMode] = useState<'view' | 'edit' | 'return' | 'recurring'>('view')
   // The transaction itself, or one of its returns, awaiting confirmation
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null)
@@ -84,6 +86,8 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
   }
 
   const { unsynced } = transaction
+  // Added by approving a draft: it already repeats
+  const recurringSource = recurringSourceOf(transaction.transactionId, recurringPayments ?? [])
 
   const handleRetry = async () => {
     await retryOutboxEntries([transaction.transactionId])
@@ -265,6 +269,13 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
             </div>
           )}
 
+          {recurringSource && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Repeat className="h-3 w-3" />
+              From recurring payment: {recurringSource.what} ({describeSchedule(recurringSource).toLowerCase()})
+            </p>
+          )}
+
           {/* Not in the sheet yet, so it can't be edited or returned there; a failed one can be sent again or dropped */}
           {unsynced?.status === 'failed' && (
             <div className="flex gap-2">
@@ -295,7 +306,7 @@ export function TransactionDetailModal({ transaction, open, onClose }: Transacti
               </Button>
             )}
             {/* A return is never recurring; recurring payments need a Google Sheet */}
-            {!transaction.returnOf && provider.mode === 'google' && (
+            {!transaction.returnOf && !recurringSource && provider.mode === 'google' && (
               <Button variant="outline" size="sm" className="gap-2" onClick={() => setMode('recurring')} aria-label="Make recurring" title="Make recurring">
                 <Repeat className="h-3.5 w-3.5" />
               </Button>
