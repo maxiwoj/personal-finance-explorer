@@ -1,4 +1,4 @@
-import { Camera, Github, Linkedin } from 'lucide-react'
+import { Camera, Github, Globe, Linkedin } from 'lucide-react'
 
 export const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
 // Optional default spreadsheet; users can pick their own via Google Picker
@@ -32,5 +32,6 @@ export const AUTHOR = {
     { label: 'GitHub', href: 'https://github.com/maxiwoj', icon: Github },
     { label: 'LinkedIn', href: 'https://www.linkedin.com/in/maksymilian-wojczuk-53a669121', icon: Linkedin },
     { label: 'Photography', href: 'https://mwojczuk.photo', icon: Camera },
+    { label: 'Website', href: 'https://mwojczuk.xyz', icon: Globe },
   ],
 }
