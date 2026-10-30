@@ -1,15 +1,17 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { DRIVE_FILE_SCOPE, GOOGLE_CLIENT_ID } from '@/lib/config'
 import { clearCache } from '@/lib/cache'
 import { clearStoredDemoTransactions } from '@/lib/demo-data'
+import { MissingScopeError, classifyRefreshError, classifyRefreshStatus, type RefreshFailure } from '@/lib/auth-errors'
 
 const STORAGE_KEY = 'pfe_access_token'
 const EXPIRY_KEY = 'pfe_token_expiry'
 const HINT_KEY = 'pfe_email_hint'
 const MODE_KEY = 'pfe_auth_mode'
 const USER_ID_KEY = 'pfe_user_id'
+const REFRESH_TIMEOUT_MS = 15000
 
 const REQUIRED_SCOPES = [
   DRIVE_FILE_SCOPE,
@@ -31,6 +33,8 @@ interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   isExpiring: boolean
+  // Signed in, but the token couldn't be refreshed because of a network failure; accessToken is null
+  isOffline: boolean
   expiryTime: number | null
   error: string | null
   signInWithGoogle: () => void
@@ -40,13 +44,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
-
-class MissingScopeError extends Error {
-  constructor() {
-    super('Google Drive file access is required. Please sign in again and allow access to the files you select.')
-    this.name = 'MissingScopeError'
-  }
-}
 
 declare global {
   interface Window {
@@ -108,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [codeClient, setCodeClient] = useState<GoogleCodeClient | null>(null)
   const [isExpiring, setIsExpiring] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+  const refreshInFlight = useRef<Promise<boolean> | null>(null)
 
   const clearAuthState = useCallback(() => {
     clearGoogleSession()
@@ -117,7 +116,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setExpiryTime(null)
     setMode(null)
     setIsExpiring(false)
+    setIsOffline(false)
     localStorage.removeItem(MODE_KEY)
+  }, [])
+
+  // Keeps the signed-in user and their spreadsheet selection; only the token is missing until a refresh succeeds
+  const enterOfflineState = useCallback(() => {
+    setMode('google')
+    setAccessToken(null)
+    setUserId(localStorage.getItem(USER_ID_KEY))
+    setEmail(localStorage.getItem(HINT_KEY))
+    setExpiryTime(null)
+    setIsExpiring(false)
+    setIsOffline(true)
   }, [])
 
   // On a refresh the user is already known from the stored session, so userinfo is skipped;
@@ -160,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(resolvedUserId)
     setExpiryTime(data.expiry_date)
     setIsExpiring(false)
+    setIsOffline(false)
 
     localStorage.setItem(MODE_KEY, 'google')
     localStorage.setItem(STORAGE_KEY, data.access_token)
@@ -167,21 +179,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null)
   }, [])
 
-  const refreshSession = useCallback(async () => {
+  const runRefresh = useCallback(async () => {
+    let failure: RefreshFailure
     try {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         credentials: 'same-origin',
+        signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
       })
 
-      if (!response.ok) {
-        clearAuthState()
-        return false
+      if (response.ok) {
+        const data = await response.json()
+        await handleAuthResponse(data, { isRefresh: true })
+        return true
       }
-
-      const data = await response.json()
-      await handleAuthResponse(data, { isRefresh: true })
-      return true
+      failure = classifyRefreshStatus(response.status)
     } catch (e) {
       if (e instanceof MissingScopeError) {
         // Session predates the drive.file scope (or it was declined): force a fresh consent
@@ -189,10 +201,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(e.message)
       }
       console.error('Refresh error:', e)
-      clearAuthState()
-      return false
+      failure = classifyRefreshError(e)
     }
-  }, [clearAuthState, handleAuthResponse])
+
+    // A network failure isn't a revoked session: stay signed in and retry once the network is back
+    if (failure === 'network' && localStorage.getItem(MODE_KEY) === 'google') {
+      enterOfflineState()
+    } else {
+      clearAuthState()
+    }
+    return false
+  }, [clearAuthState, enterOfflineState, handleAuthResponse])
+
+  // Startup, focus, reconnect and 401 retries can overlap; they share one request
+  const refreshSession = useCallback(() => {
+    if (!refreshInFlight.current) {
+      refreshInFlight.current = runRefresh().finally(() => {
+        refreshInFlight.current = null
+      })
+    }
+    return refreshInFlight.current
+  }, [runRefresh])
 
   useEffect(() => {
     if (!expiryTime || mode !== 'google') return
@@ -223,6 +252,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [expiryTime, mode, refreshSession])
 
   useEffect(() => {
+    if (!isOffline) return
+
+    const retry = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshSession()
+      }
+    }
+
+    window.addEventListener('online', retry)
+    window.addEventListener('focus', retry)
+    document.addEventListener('visibilitychange', retry)
+    return () => {
+      window.removeEventListener('online', retry)
+      window.removeEventListener('focus', retry)
+      document.removeEventListener('visibilitychange', retry)
+    }
+  }, [isOffline, refreshSession])
+
+  useEffect(() => {
     const init = async () => {
       const storedMode = localStorage.getItem(MODE_KEY) as AuthMode
       const storedToken = localStorage.getItem(STORAGE_KEY)
@@ -245,11 +293,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const restored = await refreshSession()
-      if (!restored && storedMode === 'google') {
-        clearGoogleSession()
-        localStorage.removeItem(MODE_KEY)
-      }
+      // A rejected refresh clears the stored session; a network failure keeps it (see runRefresh)
+      await refreshSession()
       setIsLoading(false)
     }
     void init()
@@ -382,9 +427,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken,
         userId,
         email,
-        isAuthenticated: mode === 'demo' || !!accessToken,
+        isAuthenticated: mode === 'demo' || !!accessToken || isOffline,
         isLoading,
         isExpiring,
+        isOffline,
         expiryTime,
         error,
         signInWithGoogle,
