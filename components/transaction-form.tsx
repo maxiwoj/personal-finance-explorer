@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState, type FormEvent } from 'react'
-import { useCategories, useCategoryListActions, useCurrencies, useFetchRatesStart, useRecentTransactions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useCategories, useCategoryListActions, useCurrencies, useFetchRatesStart, useRecentTransactions, useRecurringActions, useSaveTransaction } from '@/hooks/use-transactions'
+import { useOnline } from '@/hooks/use-outbox-sync'
 import { useFinanceDataProvider } from '@/contexts/data-provider-context'
 import { canExtendRates, compareDates, formatDate, type RatesStart, type StartDate } from '@/lib/currencies'
+import { isoDate, nextAfterToday, occurrenceLink, RECURRING_UNITS, validateRecurringInput, type RecurringUnit } from '@/lib/recurring'
 import { recordedAmount } from '@/lib/returns'
 import { parseMoney } from '@/lib/sheets'
 import { getCategoryColor, withAlpha } from '@/lib/colors'
@@ -15,6 +17,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ExtendRatesDialog } from '@/components/extend-rates-dialog'
 import { AlertCircle, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
@@ -48,7 +52,7 @@ function toDateTimeLocal(date: Date) {
 }
 
 // Most frequent first, so the usual picks are the first chips
-function byFrequency(values: string[]) {
+export function byFrequency(values: string[]) {
   const counts = new Map<string, number>()
   values.forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1))
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => value)
@@ -112,7 +116,7 @@ interface ChipPickerProps {
 }
 
 // One tap selects an option; "New" reveals a text field for values not used before
-function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
+export function ChipPicker({ id, label, options, value, onChange, colorFor, allowCustom = true, maxVisible, rank = [] }: ChipPickerProps) {
   const [isCustom, setIsCustom] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
@@ -253,6 +257,10 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   const { createCategoryList, addCategory, setCategoryHidden } = useCategoryListActions()
   const saveTransaction = useSaveTransaction()
   const fetchRatesStart = useFetchRatesStart()
+  const { addRecurringPayment } = useRecurringActions()
+  const online = useOnline()
+  // Setting up a recurring payment writes to the sheet at once, so it needs a connection
+  const canRepeat = !original && provider.mode === 'google' && online
 
   // Hidden categories are only left out when adding; editing offers the whole list
   const hiddenCategories = useMemo(
@@ -309,10 +317,15 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
   // A saved transaction dated before the currency rates start, which cannot be converted yet
   const [beforeStart, setBeforeStart] = useState<{ result: TransactionInput; ratesStart: RatesStart & { start: StartDate } } | null>(null)
   const [confirmExtend, setConfirmExtend] = useState(false)
+  const [repeats, setRepeats] = useState(false)
+  const [repeatEvery, setRepeatEvery] = useState('1')
+  const [repeatUnit, setRepeatUnit] = useState<RecurringUnit>('month')
+  // The new transaction's link to the recurring payment already set up, kept for a retry
+  const [createdLink, setCreatedLink] = useState<string | null>(null)
 
   // Holds back an app update's reload (lib/app-update.ts) while there's something to lose
   useUnsavedInput(
-    isSaving || beforeStart !== null || newCategory.trim() !== '' || amount !== initial.amount || what !== initial.what ||
+    isSaving || beforeStart !== null || newCategory.trim() !== '' || repeats || amount !== initial.amount || what !== initial.what ||
     category !== initial.category || currency !== initial.currency || timestamp !== initial.timestamp || notes !== initial.notes
   )
 
@@ -396,10 +409,27 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       }
     }
 
+    // The new transaction is the payment's first date, already paid: drafts start with the next one
+    const recurring = repeats && canRepeat
+      ? validateRecurringInput({ ...result, every: repeatEvery, unit: repeatUnit, start: isoDate(dayOf(result.timestamp)), end: '' })
+      : null
+    if (typeof recurring === 'string') {
+      setError(recurring)
+      return
+    }
+
     setError(null)
     setIsSaving(true)
     try {
-      const { outboxId } = await saveTransaction(result, original)
+      // First, so the transaction can be saved linked to it (column K); once set up it isn't set up
+      // again on a retry
+      let link = createdLink
+      if (recurring && !link) {
+        const paymentId = await addRecurringPayment(recurring, nextAfterToday(recurring, dayOf(result.timestamp)))
+        link = occurrenceLink(paymentId, dayOf(result.timestamp))
+        setCreatedLink(link)
+      }
+      const { outboxId } = await saveTransaction(link ? { ...result, recurring: link } : result, original)
       // Keep the categories tab complete; the transaction is already saved, so a failure here is not
       // fatal. A new transaction doesn't wait for it, so the saved screen shows at once, also offline.
       const listed = categoryList?.find(c => c.name === result.category.toLowerCase())
@@ -531,6 +561,41 @@ export function TransactionForm({ original, onSaved, onCancel }: TransactionForm
       </div>
 
       <ChipPicker id="transaction-currency" label="Currency" options={currencies} value={effectiveCurrency} onChange={setCurrency} allowCustom={false} />
+
+      {!original && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox id="transaction-repeats" checked={repeats && canRepeat} onCheckedChange={(checked) => setRepeats(checked === true)} disabled={!canRepeat} />
+            <Label htmlFor="transaction-repeats" className={cn(!canRepeat && 'text-muted-foreground')}>Repeats</Label>
+            {!canRepeat && (
+              <span className="text-xs text-muted-foreground">
+                {provider.mode === 'demo' ? 'Not available in demo mode' : 'Needs a connection'}
+              </span>
+            )}
+          </div>
+          {repeats && canRepeat && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="transaction-repeat-every" className="shrink-0 font-normal">Every</Label>
+                <Input id="transaction-repeat-every" type="number" min={1} step={1} inputMode="numeric" value={repeatEvery} onChange={(e) => setRepeatEvery(e.target.value)} className="h-11 w-20 text-base" />
+                <Select value={repeatUnit} onValueChange={(value) => setRepeatUnit(value as RecurringUnit)}>
+                  <SelectTrigger className="h-11 w-[130px]" aria-label="Repeat unit">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECURRING_UNITS.map(value => (
+                      <SelectItem key={value} value={value}>{repeatEvery.trim() === '1' ? value : `${value}s`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Also saved as a recurring payment, starting with this one. Next time it shows as a draft on the Transactions page. Set an end date on the Recurring payments page.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {original && (
         <div className="space-y-2">
