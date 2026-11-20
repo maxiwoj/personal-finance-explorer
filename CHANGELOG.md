@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/maxiwoj/personal-finance-explorer/compare/v1.1.0...v1.2.0) (2026-11-20)
+
+
+### Features
+
+* compact dashboard drafts, drafts in Recent Transactions ([12baca6](https://github.com/maxiwoj/personal-finance-explorer/commit/12baca64cf89e56c76fa557bb0b42740f63786d4))
+* end recurring payments instead of deleting; template due today ([5e26b58](https://github.com/maxiwoj/personal-finance-explorer/commit/5e26b58aa94e8e74d11f47d96eef544a8052f184))
+* link recurring transactions in a Recurring column ([69cb96e](https://github.com/maxiwoj/personal-finance-explorer/commit/69cb96ed819c9a33c30770cac39df52452449c0e)), closes [#78](https://github.com/maxiwoj/personal-finance-explorer/issues/78)
+* recurring drafts on the dashboard, approval time, refresh ([b53e5ba](https://github.com/maxiwoj/personal-finance-explorer/commit/b53e5ba3506b1f50bd3df71a2387d2d9047c3143))
+* recurring payments with draft transactions to approve ([4c58b48](https://github.com/maxiwoj/personal-finance-explorer/commit/4c58b4831f02b3efc49efd445c4fb98fd2a15fd8))
+* recurring payments with draft transactions to approve ([8ce9395](https://github.com/maxiwoj/personal-finance-explorer/commit/8ce9395b65a53090ceb91d72c4656330edfa39ce)), closes [#40](https://github.com/maxiwoj/personal-finance-explorer/issues/40)
+* resume recurring payments from today; fix mobile list ([d502662](https://github.com/maxiwoj/personal-finance-explorer/commit/d502662ba37bba8fb9f5d6a081d4e9298dd1481d))
+* set up recurring payments from a transaction ([b82c3ac](https://github.com/maxiwoj/personal-finance-explorer/commit/b82c3ac53a5da5152fd4cf81829ed391fca0ef6c))
+
 ## [1.1.0](https://github.com/maxiwoj/personal-finance-explorer/compare/v1.0.1...v1.1.0) (2026-10-30)
 
 
