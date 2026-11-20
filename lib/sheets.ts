@@ -2,6 +2,7 @@ import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { dayOf, draftLink, draftTransaction, editedNext, endedPayment, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
 import { recordedAmount } from './returns'
+import { parseConfigRows, planSampleDataClear, type SampleDataCounts, type SampleDataPlan, type SheetConfig } from './sheet-config'
 import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -843,4 +844,47 @@ export async function skipRecurringDraft(accessToken: string, spreadsheetId: str
   const { payment, date } = draft
   const sheetRow = await findRecurringRow(accessToken, spreadsheetId, payment)
   await writeRecurringRow(accessToken, spreadsheetId, sheetRow, { ...payment, next: occurrenceAfter(payment, date) })
+}
+
+// A tab's values from A1, or null when the spreadsheet has no such tab
+async function fetchOptionalRange(accessToken: string, spreadsheetId: string, range: string): Promise<string[][] | null> {
+  try {
+    const data = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`)
+    return data.values || []
+  } catch (error) {
+    if (isMissingTab(error)) return null
+    throw error
+  }
+}
+
+// The config tab's settings; empty when the spreadsheet has none
+export async function fetchSheetConfig(accessToken: string, spreadsheetId: string): Promise<SheetConfig> {
+  return parseConfigRows(await fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.CONFIG}!A:C`) ?? [])
+}
+
+const SAMPLE_TABS = { config: SHEETS.CONFIG, expenses: SHEETS.FULL, recurring: SHEETS.RECURRING, categories: SHEETS.CATEGORIES }
+
+// Always read from the sheet, never the cache: it decides what an irreversible clear removes
+export async function checkSampleData(accessToken: string, spreadsheetId: string): Promise<SampleDataPlan> {
+  const [config, expenses, recurring, categories] = await Promise.all([
+    fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.CONFIG}!A:C`),
+    fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.FULL}!A:K`),
+    fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.RECURRING}!A:J`),
+    fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.CATEGORIES}!A:C`),
+  ])
+  if (!expenses) throw new Error(`The spreadsheet has no "${SHEETS.FULL}" tab.`)
+  return planSampleDataClear({ config, expenses, recurring, categories }, SAMPLE_TABS)
+}
+
+// Checks the sheet again, then clears the sample rows and the templateSample marker in one
+// request; see planSampleDataClear
+export async function clearSampleData(accessToken: string, spreadsheetId: string): Promise<SampleDataCounts> {
+  const plan = await checkSampleData(accessToken, spreadsheetId)
+  if (!plan.ok) throw new Error(plan.reason)
+
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchClear`, {
+    method: 'POST',
+    body: JSON.stringify({ ranges: plan.ranges }),
+  })
+  return plan.counts
 }

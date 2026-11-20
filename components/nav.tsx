@@ -14,12 +14,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download, Repeat } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download, Repeat, Eraser } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { applyUpdate, checkForUpdates, useUpdateStatus, type UpdateStatus } from '@/lib/app-update'
 import { OutboxStatusBar, useSignOutWithWarning } from '@/components/outbox-status'
+import { ClearSampleDataDialog } from '@/components/clear-sample-data-dialog'
+import { useSampleDataOffer } from '@/hooks/use-sheet-config'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -69,6 +71,8 @@ export function Nav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
   const updateStatus = useUpdateStatus()
+  const offerSampleClear = useSampleDataOffer()
+  const [isClearingSample, setIsClearingSample] = useState(false)
 
   // /add is the app's launch page: prefetching the other pages there (the dashboard's charts
   // alone are ~1MB) would compete with the form's own loading
@@ -120,6 +124,12 @@ export function Nav() {
             Recurring payments
           </Link>
         </DropdownMenuItem>
+        {offerSampleClear && (
+          <DropdownMenuItem onSelect={() => setIsClearingSample(true)}>
+            <Eraser className="h-4 w-4" />
+            Clear sample data
+          </DropdownMenuItem>
+        )}
         {/* An installed iOS app has no reload gesture */}
         <DropdownMenuItem onSelect={() => void checkForUpdates({ manual: true })}>
           <Download className="h-4 w-4" />
@@ -245,6 +255,7 @@ export function Nav() {
         </nav>
       )}
       {signOutDialog}
+      <ClearSampleDataDialog open={isClearingSample} onOpenChange={setIsClearingSample} />
     </header>
   )
 }

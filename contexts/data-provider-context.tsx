@@ -8,13 +8,14 @@ import { useSpreadsheet } from '@/contexts/spreadsheet-context'
 import { createQueryPersister } from '@/lib/cache'
 import { PERSIST_BUSTER, PERSIST_MAX_AGE_MS, persistScopeKey, shouldPersistQuery } from '@/lib/query-persistence'
 import { addDemoTransaction, deleteDemoTransaction, demoModeMessage, getDemoCurrencies, getDemoRatesStart, getOrCreateDemoTransactions, updateDemoTransaction } from '@/lib/demo-data'
-import { addCurrency, addRecurringPayment, endRecurringPayment, linkTransactionToRecurring, appendCategory, approveRecurringDraft, deleteRecurringPayment, fetchRecurringPayments, skipRecurringDraft, updateRecurringPayment, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction } from '@/lib/sheets'
+import { addCurrency, addRecurringPayment, endRecurringPayment, linkTransactionToRecurring, appendCategory, approveRecurringDraft, deleteRecurringPayment, fetchRecurringPayments, skipRecurringDraft, updateRecurringPayment, appendTransaction, changeDefaultCurrency, createCategoriesSheet, deleteTransaction, describeSpreadsheetAccessError, fetchCategories, fetchCategoriesAndRecent, fetchCurrencies, extendRates, fetchFullTransactions, fetchRatesStart, fetchRecentTransactions, hasStoredIds, removeCurrency, revertRates, setCategoryHidden, SheetsApiError, updateCurrencyMultiplier, updateTransaction, fetchSheetConfig, checkSampleData, clearSampleData } from '@/lib/sheets'
 import { enqueueTransaction, getKnownStoredIds, requestOutboxSync, setKnownStoredIds } from '@/lib/outbox'
 import { classifySyncError } from '@/lib/outbox-sync'
 import { useOutboxSync, useTrackSyncedOutboxEntries } from '@/hooks/use-outbox-sync'
 import type { FinanceDataScope } from '@/hooks/use-transactions'
 import type { ExtendResult, RatesStart, StartDate } from '@/lib/currencies'
 import type { RecurringDraft, RecurringPayment, RecurringPaymentInput } from '@/lib/recurring'
+import type { SampleDataCounts, SampleDataPlan, SheetConfig } from '@/lib/sheet-config'
 import type { CategoryDefinition, CurrencyDefinition, CurrencyList, Transaction, TransactionInput } from '@/lib/types'
 
 export type DataMode = 'google' | 'demo'
@@ -68,6 +69,12 @@ export interface FinanceDataProvider {
   approveRecurringDraft: (draft: RecurringDraft) => Promise<void>
   // Moves the payment to its next date without adding a transaction
   skipRecurringDraft: (draft: RecurringDraft) => Promise<void>
+  // The config tab's settings; empty without one (and in demo mode)
+  getSheetConfig: () => Promise<SheetConfig>
+  // Read fresh from the sheet: what clearing the template's sample data would remove, or why not
+  checkSampleData: () => Promise<SampleDataPlan>
+  // Checks again, then clears the sample rows and the templateSample marker
+  clearSampleData: () => Promise<SampleDataCounts>
 }
 
 const DataProviderContext = createContext<FinanceDataProvider | null>(null)
@@ -269,6 +276,15 @@ function buildGoogleProvider(
     async skipRecurringDraft(draft) {
       await fetchWithRefresh(accessToken, (token, id) => skipRecurringDraft(token, id, draft), { isWrite: true })
     },
+    async getSheetConfig() {
+      return fetchWithRefresh(accessToken, fetchSheetConfig)
+    },
+    async checkSampleData() {
+      return fetchWithRefresh(accessToken, checkSampleData, { isWrite: true })
+    },
+    async clearSampleData() {
+      return fetchWithRefresh(accessToken, clearSampleData, { isWrite: true })
+    },
   }
 }
 
@@ -353,6 +369,15 @@ function buildDemoProvider(): FinanceDataProvider {
     },
     async skipRecurringDraft() {
       throw new Error(demoModeMessage('Recurring payments'))
+    },
+    async getSheetConfig() {
+      return {}
+    },
+    async checkSampleData() {
+      throw new Error(demoModeMessage('Clearing sample data'))
+    },
+    async clearSampleData() {
+      throw new Error(demoModeMessage('Clearing sample data'))
     },
   }
 }
