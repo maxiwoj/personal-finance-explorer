@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { TransactionsTable } from '@/components/transactions-table'
+import { RecurringDrafts } from '@/components/recurring-drafts'
 import { MonthYearFilter, filterByMonthYear } from '@/components/month-year-filter'
 import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filter'
 import { AmountFilter, filterByAmount, type AmountFilterValue } from '@/components/amount-filter'
@@ -136,6 +137,9 @@ export default function TransactionsPage() {
           Browse and filter all {transactions.length} transactions
         </p>
       </div>
+
+      {/* Due recurring payments, waiting to be approved or removed */}
+      <RecurringDrafts />
 
       {/* Filters */}
       <Card>

@@ -1,12 +1,13 @@
 import type { PersistedClient } from '@tanstack/react-query-persist-client'
 
 // Bump when the shape of cached data changes (Transaction, CategoryDefinition, CurrencyList,
-// RatesStart): a cache written by an older version is then dropped instead of misread
+// RatesStart, RecurringPayment): a cache written by an older version is then dropped instead of misread
 export const PERSIST_BUSTER = 'v1'
 export const PERSIST_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
-// What the Add form, the dashboard and the transaction pages need to show before the network answers
-const PERSISTED_QUERIES = ['categories', 'currencies', 'rates-start', 'recent-transactions', 'full-transactions']
+// What the Add form, the dashboard, the transaction pages and their recurring drafts need to show
+// before the network answers
+const PERSISTED_QUERIES = ['categories', 'currencies', 'rates-start', 'recent-transactions', 'full-transactions', 'recurring-payments']
 
 // One cache per Google user and spreadsheet, so nobody sees another's data
 export function persistScopeKey(userId: string, spreadsheetId: string) {

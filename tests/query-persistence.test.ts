@@ -16,7 +16,7 @@ describe('persistScopeKey', () => {
 
 describe('shouldPersistQuery', () => {
   it('keeps the data the app shows first', () => {
-    for (const name of ['categories', 'currencies', 'rates-start', 'recent-transactions', 'full-transactions']) {
+    for (const name of ['categories', 'currencies', 'rates-start', 'recent-transactions', 'full-transactions', 'recurring-payments']) {
       assert.equal(shouldPersistQuery([name, 'google', 'sheet-1'], true, 'sheet-1'), true, name)
     }
   })

@@ -95,8 +95,8 @@ export function parseRow(row: string[]): Transaction | null {
   try {
     if (row.length < 7) return null
     
-    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID, Notes, ReturnOf
-    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId, notes, returnOf] = row
+    // Columns: Timestamp, What, Category, Amount, Currency, AmountPLN, MonthYear, TransactionID, Notes, ReturnOf, Recurring
+    const [timestamp, what, category, amount, currency, amountPLN, monthYear, transactionId, notes, returnOf, recurring] = row
     
     if (!timestamp || !what || !category) return null
     
@@ -122,13 +122,14 @@ export function parseRow(row: string[]): Transaction | null {
       transactionId: transactionId?.trim() || `${timestamp}-${what}-${Math.random().toString(36).slice(2, 8)}`,
       notes: notes?.trim() ?? '',
       returnOf: returnOf?.trim() ?? '',
+      recurring: recurring?.trim() ?? '',
     }
   } catch {
     return null
   }
 }
 
-// Rows of a transactions tab (Timestamp..ReturnOf), with or without the header row
+// Rows of a transactions tab (Timestamp..Recurring), with or without the header row
 export function parseTransactionRows(rows: string[][]): Transaction[] {
   const dataRows = rows.length > 0 && rows[0][0]?.toLowerCase().includes('timestamp')
     ? rows.slice(1)
