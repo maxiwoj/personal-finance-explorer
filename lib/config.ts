@@ -14,6 +14,7 @@ export const SHEETS = {
   CATEGORIES: 'categories', // Optional: category order (column A) and colors (column B)
   CURRENCIES: 'currencyDates', // Optional: default currency (B1) and a column pair of daily rates per currency
   RECURRING: 'recurring', // Optional: recurring payments, created when the first one is added
+  CONFIG: 'config', // Optional: per-spreadsheet settings as key/value rows (lib/sheet-config.ts)
 }
 
 // Per-file access: only spreadsheets the user picks (or the app creates) are reachable
