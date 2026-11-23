@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfDay, format, startOfDay, startOfMonth, subMonths } from 'date-fns'
 import { useRecentTransactions, useDefaultCurrency, useRecurringDrafts, useTransactionsWithOutbox } from '@/hooks/use-transactions'
-import { useSampleDataOffer } from '@/hooks/use-sheet-config'
+import { useSampleDataHint } from '@/hooks/use-sheet-config'
 import { ClearSampleDataDialog } from '@/components/clear-sample-data-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -22,6 +22,7 @@ import { getCategoryTotals, getCumulativeSpending, type TimeSeriesGranularity } 
 import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, Info, TrendingUp, Wallet } from 'lucide-react'
 import type { Transaction } from '@/lib/types'
+import { NoTransactions } from '@/components/no-transactions'
 
 function getComparisonWindow(selectedDateRange: { start: string; end: string } | null, selectedMonths: string[], selectedYears: string[]) {
   if (selectedDateRange) {
@@ -129,8 +130,8 @@ export default function DashboardPage() {
   const [limitComparisonToCurrentProgress, setLimitComparisonToCurrentProgress] = useState(false)
   const [showTransactionTimes, setShowTransactionTimes] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
-  // A fresh copy of the template: offer to clear its sample data
-  const offerSampleClear = useSampleDataOffer()
+  // A copy of the template still showing its sample data: offer to clear it
+  const offerSampleClear = useSampleDataHint()
   const [isClearingSample, setIsClearingSample] = useState(false)
 
   const filteredTransactions = useMemo(() => {
@@ -233,9 +234,7 @@ export default function DashboardPage() {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found in your spreadsheet.</p>
-      </div>
+      <NoTransactions />
     )
   }
 

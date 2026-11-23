@@ -14,6 +14,7 @@ import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filt
 import { getCategoryTotals, filterTransactionsByCategory, getDescriptionTotals } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, Wallet, TrendingUp, Tags } from 'lucide-react'
+import { NoTransactions } from '@/components/no-transactions'
 
 export default function CategoriesPage() {
   const defaultCurrency = useDefaultCurrency()
@@ -60,9 +61,7 @@ export default function CategoriesPage() {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found in your spreadsheet.</p>
-      </div>
+      <NoTransactions />
     )
   }
 

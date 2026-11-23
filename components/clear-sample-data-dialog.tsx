@@ -22,12 +22,20 @@ function count(value: number, word: string) {
   return `${value} ${word}${value === 1 ? '' : 's'}`
 }
 
-function describeCounts({ transactions, recurring, categories }: SampleDataCounts) {
+function describeCounts({ transactions, recurring, categories, keptTransactions, keptRecurring }: SampleDataCounts) {
   return [
-    `${count(transactions, 'transaction')} in "${SHEETS.FULL}"`,
-    `${count(recurring, 'recurring payment')} in "${SHEETS.RECURRING}"`,
-    `${count(categories, 'category')} in "${SHEETS.CATEGORIES}"`,
+    `${count(transactions, 'sample transaction')} in "${SHEETS.FULL}"`,
+    `${count(recurring, 'sample recurring payment')} in "${SHEETS.RECURRING}"`,
+    // Categories are kept while the user's own transactions use them
+    ...(keptTransactions || keptRecurring ? [] : [`${count(categories, 'category')} in "${SHEETS.CATEGORIES}"`]),
   ]
+}
+
+// What stays besides headers, formulas, currencies and settings
+function describeKept({ keptTransactions, keptRecurring }: SampleDataCounts) {
+  if (!keptTransactions && !keptRecurring) return 'Headers, formulas, currencies and settings stay.'
+  const own = [keptTransactions && count(keptTransactions, 'transaction'), keptRecurring && count(keptRecurring, 'recurring payment')].filter(Boolean).join(' and ')
+  return `Your own ${own} and the categories stay, as do headers, formulas, currencies and settings.`
 }
 
 interface ClearSampleDataDialogProps {
@@ -99,7 +107,7 @@ export function ClearSampleDataDialog({ open, onOpenChange }: ClearSampleDataDia
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               {cleared ? (
-                <p>Removed {describeCounts(cleared).join(', ')}. Add your own transactions to get started.</p>
+                <p>Removed {describeCounts(cleared).join(', ')}.{cleared.keptTransactions ? '' : ' Add your own transactions to get started.'}</p>
               ) : error ? (
                 <p className="text-destructive">{error}</p>
               ) : !plan ? (
@@ -108,11 +116,11 @@ export function ClearSampleDataDialog({ open, onOpenChange }: ClearSampleDataDia
                 <p>{plan.reason}</p>
               ) : (
                 <>
-                  <p>This deletes the template&apos;s sample data from your spreadsheet:</p>
+                  <p>This deletes the template&apos;s sample data (rows whose ID starts with &quot;sample-&quot;) from your spreadsheet:</p>
                   <ul className="list-disc pl-5">
                     {describeCounts(plan.counts).map((line) => <li key={line}>{line}</li>)}
                   </ul>
-                  <p>Headers, formulas, currencies and settings stay.</p>
+                  <p>{describeKept(plan.counts)}</p>
                   <p className="font-semibold text-destructive">
                     This can&apos;t be undone from the app. To get the data back, use File → Version history in Google Sheets.
                   </p>

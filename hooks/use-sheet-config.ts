@@ -19,15 +19,22 @@ export function useSheetConfig(enabled = true) {
   })
 }
 
-// Whether to offer clearing the template's sample data: the sheet is marked as the template's
-// sample and every recent transaction is a sample one. The clear itself checks the sheet again.
+// Whether to offer clearing the template's sample data: the sheet is still marked as the
+// template's sample. The dialog reads the sheet to show what would go, or why it can't.
 export function useSampleDataOffer() {
   const { mode, isOffline } = useAuth()
   const isGoogle = mode === 'google'
   const { data: config } = useSheetConfig(isGoogle)
+
+  return isGoogle && !isOffline && isTemplateSample(config)
+}
+
+// The dashboard hint: offered, and sample transactions are among the recent ones shown
+export function useSampleDataHint() {
+  const offered = useSampleDataOffer()
   const { data: recent } = useRecentTransactions()
 
-  return isGoogle && !isOffline && isTemplateSample(config) && !!recent && recent.every(t => isSampleId(t.transactionId))
+  return offered && !!recent?.some(t => isSampleId(t.transactionId))
 }
 
 export function useSampleDataActions() {

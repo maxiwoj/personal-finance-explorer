@@ -16,6 +16,7 @@ import { filterTransactionsByCategory, getDescriptionTotals, getMonthlyTotals } 
 import { getCategoryColor, paletteColor } from '@/lib/colors'
 import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { NoTransactions } from '@/components/no-transactions'
 
 interface CategoryPageProps {
   params: Promise<{ category: string }>
@@ -69,9 +70,7 @@ export default function CategoryPage({ params }: CategoryPageProps) {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found.</p>
-      </div>
+      <NoTransactions message="No transactions found." />
     )
   }
 

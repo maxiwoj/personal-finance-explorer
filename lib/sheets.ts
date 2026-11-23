@@ -2,7 +2,7 @@ import { SHEETS_API_BASE, SHEETS } from './config'
 import { columnLetter, compareDates, CURRENCY_LAYOUT_ROWS, defaultCurrencySwap, extendStartDate, findEarliestDay, findStartDate, formatDate, newCurrencyCells, newRateProblems, parseCurrencyLayout, parseRatesStart, rateStatuses, revertStartDate, validateNewCurrency, type CurrencyLayout, type DisplayedCurrencyRows, type ExtendResult, type RatesStart, type StartDate } from './currencies'
 import { dayOf, draftLink, draftTransaction, editedNext, endedPayment, isoDate, occurrenceAfter, parseRecurringRows, RECURRING_HEADER, sameRecurringPayment, type RecurringDraft, type RecurringPayment, type RecurringPaymentInput } from './recurring'
 import { recordedAmount } from './returns'
-import { parseConfigRows, planSampleDataClear, type SampleDataCounts, type SampleDataPlan, type SheetConfig } from './sheet-config'
+import { parseConfigRows, planSampleDataClear, sampleDataRequests, type SampleDataCounts, type SampleDataPlan, type SheetConfig, type TabGrid } from './sheet-config'
 import { parseCategoriesAndRecent, parseCategoryRows, parseRow, parseTransactionRows, rowsWithId } from './sheet-rows'
 import type { CategoryDefinition, CurrencyList, Transaction, TransactionInput } from './types'
 
@@ -862,8 +862,6 @@ export async function fetchSheetConfig(accessToken: string, spreadsheetId: strin
   return parseConfigRows(await fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.CONFIG}!A:C`) ?? [])
 }
 
-const SAMPLE_TABS = { config: SHEETS.CONFIG, expenses: SHEETS.FULL, recurring: SHEETS.RECURRING, categories: SHEETS.CATEGORIES }
-
 // Always read from the sheet, never the cache: it decides what an irreversible clear removes
 export async function checkSampleData(accessToken: string, spreadsheetId: string): Promise<SampleDataPlan> {
   const [config, expenses, recurring, categories] = await Promise.all([
@@ -873,18 +871,43 @@ export async function checkSampleData(accessToken: string, spreadsheetId: string
     fetchOptionalRange(accessToken, spreadsheetId, `${SHEETS.CATEGORIES}!A:C`),
   ])
   if (!expenses) throw new Error(`The spreadsheet has no "${SHEETS.FULL}" tab.`)
-  return planSampleDataClear({ config, expenses, recurring, categories }, SAMPLE_TABS)
+  return planSampleDataClear({ config, expenses, recurring, categories })
 }
 
-// Checks the sheet again, then clears the sample rows and the templateSample marker in one
-// request; see planSampleDataClear
+// Row deletion addresses tabs by their numeric sheetId
+async function fetchTabGrids(accessToken: string, spreadsheetId: string): Promise<Record<string, TabGrid>> {
+  const metadata = await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties(sheetId,title,gridProperties(rowCount,frozenRowCount))`)
+  const grids: Record<string, TabGrid> = {}
+  for (const { properties } of metadata.sheets ?? []) {
+    grids[properties.title] = {
+      sheetId: properties.sheetId,
+      rowCount: properties.gridProperties?.rowCount ?? 0,
+      frozenRowCount: properties.gridProperties?.frozenRowCount ?? 0,
+    }
+  }
+  return grids
+}
+
+// Checks the sheet again, then deletes the sample rows, empties the categories when nothing of
+// the user's stays, and removes the templateSample marker, in one batchUpdate (all or nothing);
+// see planSampleDataClear. Rows are addressed as just read, like a transaction's delete.
 export async function clearSampleData(accessToken: string, spreadsheetId: string): Promise<SampleDataCounts> {
   const plan = await checkSampleData(accessToken, spreadsheetId)
   if (!plan.ok) throw new Error(plan.reason)
 
-  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}/values:batchClear`, {
+  const grids = await fetchTabGrids(accessToken, spreadsheetId)
+  const expenses = grids[SHEETS.FULL]
+  if (!expenses) throw new Error(`The spreadsheet has no "${SHEETS.FULL}" tab.`)
+
+  const requests = sampleDataRequests(plan.changes, {
+    expenses,
+    recurring: grids[SHEETS.RECURRING],
+    categories: grids[SHEETS.CATEGORIES],
+    config: grids[SHEETS.CONFIG],
+  })
+  await sheetsRequest(accessToken, `${SHEETS_API_BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
     method: 'POST',
-    body: JSON.stringify({ ranges: plan.ranges }),
+    body: JSON.stringify({ requests }),
   })
   return plan.counts
 }

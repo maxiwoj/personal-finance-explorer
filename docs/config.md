@@ -25,22 +25,21 @@ Meant to replace probing the sheet's columns for each migration (e.g. whether Tr
 
 ## Clearing the template's sample data
 
-A fresh copy of the [template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) is full of sample transactions. **Clear sample data** in the account menu, and a hint on the dashboard, remove them so you can start with your own.
+A fresh copy of the [template](https://docs.google.com/spreadsheets/d/1KTNJ1fwJbM3uFzJzz3Duc2MP88Ybx2OiXrYa51cooKo/copy) is full of sample transactions. **Clear sample data** in the account menu, and a hint on the dashboard while sample transactions show, remove them, also after you've started adding your own.
 
-It is offered only when all of these hold, and checked again against the sheet before anything is deleted:
+Sample rows are the ones whose ID starts with `sample-`: TransactionID (`expenses!H`) for transactions, ID (`recurring!A`) for recurring payments. IDs the app writes are UUIDs, so your own rows never match.
 
-- `config` has `templateSample` set to `TRUE`. A sheet without it, which is every sheet not copied from the template, can never be cleared from the app.
-- Every transaction in `expenses` has a sample TransactionID (starting with `sample-`), and so does every payment in `recurring`. IDs the app writes are UUIDs, so one transaction or recurring payment you added blocks it; delete the sample rows in the sheet instead.
-- You're online and signed in with Google (not in demo mode).
+It's offered while `config` has `templateSample` set to `TRUE` and you're online and signed in with Google (not in demo mode). A sheet without the marker, which is every sheet not copied from the template, can never be cleared from the app. When you confirm, the sheet is read again and:
 
-It clears:
+- Every sample row in `expenses` and `recurring` is deleted. Your own transactions and recurring payments stay and close up; headers and formula columns stay.
+- `categories` is emptied (below its header) only when none of your own transactions or recurring payments remain; otherwise it stays, since your transactions use it.
+- The `templateSample` row in `config` is emptied, so it's never offered again for that sheet.
 
-- `expenses`: the input columns (A:E and H:K) below the header. The header and the formula columns (AmountPLN, MonthYear) stay.
-- `recurring`: every payment below the header.
-- `categories`: every category below the header.
-- The `templateSample` row in `config`, so it's never offered again for that sheet.
+All of it is one Sheets request, applied all or nothing.
 
-`currencyDates` and the rest of `config` stay. The confirmation shows how many rows each tab loses and asks you to type `DELETE`. It can't be undone from the app; use **File → Version history** in Google Sheets to get the data back.
+It's refused while one of your transactions points at a sample row: a return of a sample purchase (ReturnOf, `expenses!J`) or a payment approved from a sample recurring payment (Recurring, `expenses!K`). Deleting the sample row would leave it pointing at nothing, so the dialog lists those rows to change or delete in the sheet first.
+
+`currencyDates` and the rest of `config` stay. The confirmation shows what goes and what stays and asks you to type `DELETE`. It can't be undone from the app; use **File → Version history** in Google Sheets to get the data back.
 
 ## Template setup
 
