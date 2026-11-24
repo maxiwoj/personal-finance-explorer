@@ -332,24 +332,24 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="hidden md:grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <div className="hidden md:grid gap-4 md:grid-cols-3">
+        <Card className="gap-1 py-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4">
             <CardTitle className="text-sm font-medium">Total Spending</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4">
             <div className="text-2xl font-bold">{totalSpendingLabel}</div>
             <p className="text-xs text-muted-foreground">{periodLabel}</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-1 py-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4">
             <CardTitle className="text-sm font-medium">Transactions</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4">
             <div className="text-2xl font-bold">{filteredTransactions.length}</div>
             <p className="text-xs text-muted-foreground">
               Transactions in selected period
@@ -357,11 +357,11 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2 lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-1 py-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4">
             <CardTitle className="text-sm font-medium">Categories</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4">
             <div className="text-2xl font-bold">{categoryTotals.length}</div>
             <p className="text-xs text-muted-foreground">
               Different spending categories
