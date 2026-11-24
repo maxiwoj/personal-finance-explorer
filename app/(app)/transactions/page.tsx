@@ -17,6 +17,7 @@ import { AmountFilter, filterByAmount, type AmountFilterValue } from '@/componen
 import { getCategoryTotals } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
 import { AlertCircle, Search, X } from 'lucide-react'
+import { NoTransactions } from '@/components/no-transactions'
 
 const ALL_VALUE = '__all__'
 
@@ -121,9 +122,7 @@ export default function TransactionsPage() {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found in your spreadsheet.</p>
-      </div>
+      <NoTransactions />
     )
   }
 

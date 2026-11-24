@@ -17,6 +17,7 @@ The script is standalone (created at [script.google.com](https://script.google.c
 - Don't add sample rows dated after today: the script only moves dates forward, from the newest one.
 - Every run moves each active recurring sample so its `Next` (`recurring!I`) is today (ended ones are left as they are), so every copy shows its drafts due today, also after the owner approves one in the template. `Start` and `End` (H:J) and the dates in that payment's `expenses!K` links move by the same days. Sample transactions linked to a payment must be on its earlier dates, never on `Next`: `Next` is the first date not yet handled, and approving it would skip a date that already has a linked row.
 - `expenses2` must include column K (its formula's range extended to `K`), and `expenses!K1` reads `Recurring`; see [Recurring column](./migrations/recurring-column.md).
+- Keep the `config` tab's `templateSample = TRUE` row, and keep every sample transaction's TransactionID (`expenses!H`) and recurring payment's ID (`recurring!A`) starting with `sample-`: that is what lets a copy clear its sample data from the app. A new sample row needs such an ID too. See [Spreadsheet config](./config.md#template-setup).
 - The shifted dates must stay within the `currencyDates` range (from `DATE(2025, 11, 1)`, see [Currencies](./currencies.md)), or `AmountPLN` can't convert the oldest rows.
 
 ### Setup

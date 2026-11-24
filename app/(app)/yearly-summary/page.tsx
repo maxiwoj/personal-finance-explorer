@@ -20,6 +20,7 @@ import {
   roundCurrency,
 } from '@/lib/analytics'
 import { AlertCircle, Wallet, TrendingUp, TrendingDown } from 'lucide-react'
+import { NoTransactions } from '@/components/no-transactions'
 
 function getElapsedMonthCount(year: number): number {
   const now = new Date()
@@ -90,9 +91,7 @@ export default function YearlySummaryPage() {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found in your spreadsheet.</p>
-      </div>
+      <NoTransactions />
     )
   }
 

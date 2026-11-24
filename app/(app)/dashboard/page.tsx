@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfDay, format, startOfDay, startOfMonth, subMonths } from 'date-fns'
 import { useRecentTransactions, useDefaultCurrency, useRecurringDrafts, useTransactionsWithOutbox } from '@/hooks/use-transactions'
+import { useSampleDataHint } from '@/hooks/use-sheet-config'
+import { ClearSampleDataDialog } from '@/components/clear-sample-data-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/spinner'
@@ -18,8 +20,9 @@ import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filt
 import { RecentTransactionsCarousel } from '@/components/recent-transactions-carousel'
 import { getCategoryTotals, getCumulativeSpending, type TimeSeriesGranularity } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
-import { AlertCircle, TrendingUp, Wallet } from 'lucide-react'
+import { AlertCircle, Info, TrendingUp, Wallet } from 'lucide-react'
 import type { Transaction } from '@/lib/types'
+import { NoTransactions } from '@/components/no-transactions'
 
 function getComparisonWindow(selectedDateRange: { start: string; end: string } | null, selectedMonths: string[], selectedYears: string[]) {
   if (selectedDateRange) {
@@ -127,6 +130,9 @@ export default function DashboardPage() {
   const [limitComparisonToCurrentProgress, setLimitComparisonToCurrentProgress] = useState(false)
   const [showTransactionTimes, setShowTransactionTimes] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  // A copy of the template still showing its sample data: offer to clear it
+  const offerSampleClear = useSampleDataHint()
+  const [isClearingSample, setIsClearingSample] = useState(false)
 
   const filteredTransactions = useMemo(() => {
     if (!transactions) return []
@@ -228,9 +234,7 @@ export default function DashboardPage() {
 
   if (!transactions || transactions.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">No transactions found in your spreadsheet.</p>
-      </div>
+      <NoTransactions />
     )
   }
 
@@ -275,6 +279,22 @@ export default function DashboardPage() {
           <MonthYearFilter transactions={transactions} />
         </div>
       </div>
+
+      {offerSampleClear && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <p>
+              This is the template&apos;s sample data.{' '}
+              <button type="button" className="underline underline-offset-2" onClick={() => setIsClearingSample(true)}>
+                Clear it
+              </button>{' '}
+              to start with your own.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+      <ClearSampleDataDialog open={isClearingSample} onOpenChange={setIsClearingSample} />
 
       <RecentTransactionsCarousel 
         transactions={transactions || []} 
