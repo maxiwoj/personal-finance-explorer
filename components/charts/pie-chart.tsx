@@ -12,9 +12,12 @@ interface PieChartProps {
   height?: number
   showLegend?: boolean
   unit?: string
+  // Shown inside the donut, e.g. the total of all slices
+  centerValue?: string
+  centerCaption?: string
 }
 
-export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN' }: PieChartProps) {
+export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN', centerValue, centerCaption }: PieChartProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartRef = useRef<ReactECharts>(null)
@@ -39,6 +42,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
       tooltipText: isDark ? '#e2e8f0' : '#0f172a',
       segmentBorder: isDark ? '#0f172a' : '#ffffff',
       emphasisText: isDark ? '#f8fafc' : '#0f172a',
+      captionText: isDark ? '#94a3b8' : '#64748b',
     }),
     [isDark]
   )
@@ -58,6 +62,17 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
   const option: EChartsOption = useMemo(
     () => ({
       animationDuration: 250,
+      ...(centerValue && {
+        title: {
+          text: centerValue,
+          subtext: centerCaption,
+          left: 'center',
+          top: 'middle',
+          itemGap: 4,
+          textStyle: { color: chartTheme.emphasisText, fontSize: 16, fontWeight: 'bold' },
+          subtextStyle: { color: chartTheme.captionText, fontSize: 11 },
+        },
+      }),
       tooltip: {
         trigger: 'item',
         backgroundColor: chartTheme.tooltipBackground,
@@ -112,7 +127,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
         },
       ],
     }),
-    [chartTheme, data, isDark, unit]
+    [centerCaption, centerValue, chartTheme, data, isDark, unit]
   )
 
   const handleClick = (params: { name?: string }) => {

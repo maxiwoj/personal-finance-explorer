@@ -20,7 +20,8 @@ import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filt
 import { RecentTransactionsCarousel } from '@/components/recent-transactions-carousel'
 import { getCategoryTotals, getCumulativeSpending, type TimeSeriesGranularity } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
-import { AlertCircle, Info, TrendingUp, Wallet } from 'lucide-react'
+import { AlertCircle, Info, Settings2, SlidersHorizontal, TrendingUp, Wallet } from 'lucide-react'
+import { MobileFold } from '@/components/mobile-fold'
 import type { Transaction } from '@/lib/types'
 import { NoTransactions } from '@/components/no-transactions'
 
@@ -261,6 +262,14 @@ export default function DashboardPage() {
       ? 'All time'
       : `${selectedMonths.length === 0 ? 'All months' : ''} ${selectedYears.length === 1 ? selectedYears[0] : ''}`
 
+  const periodLabel = !selectedDateRange && selectedMonths.length === 1 && selectedYears.length === 1
+    ? format(new Date(Number(selectedYears[0]), Number(selectedMonths[0]) - 1, 1), 'MMM yyyy')
+    : filterLabel.trim() || 'Selected period'
+  const filterSummary = selectedCategories.length > 0
+    ? `${periodLabel} · ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`
+    : periodLabel
+  const totalSpendingLabel = `${totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} ${defaultCurrency}`
+
   const canComparePreviousMonth = Boolean(comparisonWindow)
   const chartHelpText = showTransactionTimes
     ? 'Granular mode plots every transaction timestamp. Hovering a point also shows the transaction name when available.'
@@ -273,11 +282,17 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">Your spending overview</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <MobileFold
+          label="Filters"
+          icon={SlidersHorizontal}
+          summary={filterSummary}
+          className="md:w-auto"
+          contentClassName="flex flex-wrap items-center gap-2"
+        >
           <CategoryFilter transactions={transactions} />
           <DateRangeFilter />
           <MonthYearFilter transactions={transactions} />
-        </div>
+        </MobileFold>
       </div>
 
       {offerSampleClear && (
@@ -304,19 +319,28 @@ export default function DashboardPage() {
         onTransactionClick={setSelectedTransaction}
       />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {/* Mobile: one compact line instead of three cards */}
+      <div className="md:hidden flex items-baseline justify-between gap-3 rounded-lg border px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">Total spending</p>
+          <p className="text-xl font-bold">{totalSpendingLabel}</p>
+        </div>
+        <p className="shrink-0 text-right text-xs text-muted-foreground">
+          {filteredTransactions.length} transactions
+          <br />
+          {categoryTotals.length} categories
+        </p>
+      </div>
+
+      <div className="hidden md:grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Spending</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {totalSpending.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {defaultCurrency}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {filterLabel.trim() || 'Selected period'}
-            </p>
+            <div className="text-2xl font-bold">{totalSpendingLabel}</div>
+            <p className="text-xs text-muted-foreground">{periodLabel}</p>
           </CardContent>
         </Card>
 
@@ -354,7 +378,14 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
-              <PieChart unit={defaultCurrency} data={pieData} onSliceClick={handlePieSliceClick} height={350} />
+              <PieChart
+                unit={defaultCurrency}
+                data={pieData}
+                onSliceClick={handlePieSliceClick}
+                height={350}
+                centerValue={`${totalSpending.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} ${defaultCurrency}`}
+                centerCaption="Total"
+              />
             ) : (
               <div className="flex items-center justify-center h-[350px] text-muted-foreground">
                 No transactions in selected period
@@ -371,54 +402,56 @@ export default function DashboardPage() {
                 {lineChartConfig.description}. Use the brush tool to select a smaller time window.
               </CardDescription>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                <div className="space-y-1">
-                  <Label htmlFor="compare-previous-month">Previous month</Label>
-                  <p className="text-xs text-muted-foreground">Overlay the prior month as a dashed series.</p>
+            <MobileFold label="Chart options" icon={Settings2} contentClassName="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="compare-previous-month">Previous month</Label>
+                    <p className="text-xs text-muted-foreground">Overlay the prior month as a dashed series.</p>
+                  </div>
+                  <Switch
+                    id="compare-previous-month"
+                    checked={showPreviousMonth}
+                    onCheckedChange={checked => {
+                      setShowPreviousMonth(checked)
+                      if (!checked) {
+                        setLimitComparisonToCurrentProgress(false)
+                      }
+                    }}
+                    disabled={!canComparePreviousMonth}
+                  />
                 </div>
-                <Switch
-                  id="compare-previous-month"
-                  checked={showPreviousMonth}
-                  onCheckedChange={checked => {
-                    setShowPreviousMonth(checked)
-                    if (!checked) {
-                      setLimitComparisonToCurrentProgress(false)
-                    }
-                  }}
-                  disabled={!canComparePreviousMonth}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                <div className="space-y-1">
-                  <Label htmlFor="limit-comparison-progress">Trim comparison</Label>
-                  <p className="text-xs text-muted-foreground">Hide prior-month points after the current month stops.</p>
+                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="limit-comparison-progress">Trim comparison</Label>
+                    <p className="text-xs text-muted-foreground">Hide prior-month points after the current month stops.</p>
+                  </div>
+                  <Switch
+                    id="limit-comparison-progress"
+                    checked={limitComparisonToCurrentProgress}
+                    onCheckedChange={setLimitComparisonToCurrentProgress}
+                    disabled={!showPreviousMonth}
+                  />
                 </div>
-                <Switch
-                  id="limit-comparison-progress"
-                  checked={limitComparisonToCurrentProgress}
-                  onCheckedChange={setLimitComparisonToCurrentProgress}
-                  disabled={!showPreviousMonth}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                <div className="space-y-1">
-                  <Label htmlFor="show-transaction-times">Transaction times</Label>
-                  <p className="text-xs text-muted-foreground">Plot each transaction instead of daily rollups.</p>
+                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="show-transaction-times">Transaction times</Label>
+                    <p className="text-xs text-muted-foreground">Plot each transaction instead of daily rollups.</p>
+                  </div>
+                  <Switch
+                    id="show-transaction-times"
+                    checked={showTransactionTimes}
+                    onCheckedChange={setShowTransactionTimes}
+                  />
                 </div>
-                <Switch
-                  id="show-transaction-times"
-                  checked={showTransactionTimes}
-                  onCheckedChange={setShowTransactionTimes}
-                />
               </div>
-            </div>
-            {!canComparePreviousMonth && (
-              <p className="text-xs text-muted-foreground">
-                Previous-month comparison is available when you select a single month/year or a custom date range.
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">{chartHelpText}</p>
+              {!canComparePreviousMonth && (
+                <p className="text-xs text-muted-foreground">
+                  Previous-month comparison is available when you select a single month/year or a custom date range.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">{chartHelpText}</p>
+            </MobileFold>
           </CardHeader>
           <CardContent>
             {lineChartConfig.labels.length > 0 ? (

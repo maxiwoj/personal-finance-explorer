@@ -16,7 +16,8 @@ import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filt
 import { AmountFilter, filterByAmount, type AmountFilterValue } from '@/components/amount-filter'
 import { getCategoryTotals } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
-import { AlertCircle, Search, X } from 'lucide-react'
+import { AlertCircle, Search, SlidersHorizontal, X } from 'lucide-react'
+import { MobileFold } from '@/components/mobile-fold'
 import { NoTransactions } from '@/components/no-transactions'
 
 const ALL_VALUE = '__all__'
@@ -92,11 +93,17 @@ export default function TransactionsPage() {
     setAmountFilter({ min: null, max: null, field: 'amountPLN' })
   }
 
-  const hasActiveFilters = categoryFilter !== ALL_VALUE || currencyFilter !== ALL_VALUE || searchQuery !== '' ||
-    amountFilter.min !== null || amountFilter.max !== null ||
-    selectedDateRange !== null ||
-    selectedMonths.length !== 1 || selectedYears.length !== 1 ||
-    selectedMonths[0] !== currentMonth || selectedYears[0] !== currentYear
+  const isDefaultPeriod = selectedDateRange === null &&
+    selectedMonths.length === 1 && selectedYears.length === 1 &&
+    selectedMonths[0] === currentMonth && selectedYears[0] === currentYear
+  // Filters folded behind "More filters" on mobile
+  const foldedActiveCount = [
+    !isDefaultPeriod,
+    amountFilter.min !== null || amountFilter.max !== null,
+    currencyFilter !== ALL_VALUE,
+    categoryFilter !== ALL_VALUE,
+  ].filter(Boolean).length
+  const hasActiveFilters = searchQuery !== '' || foldedActiveCount > 0
 
   if (isLoading) {
     return (
@@ -154,11 +161,8 @@ export default function TransactionsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap items-center gap-2">
-            <MonthYearFilter transactions={transactions} />
-            <DateRangeFilter />
-            
-            <div className="relative w-full sm:w-[240px]">
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-2">
+            <div className="relative w-full md:w-[240px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 id="search"
@@ -169,35 +173,46 @@ export default function TransactionsPage() {
               />
             </div>
 
-            <AmountFilter value={amountFilter} onChange={setAmountFilter} />
+            <MobileFold
+              label="More filters"
+              icon={SlidersHorizontal}
+              summary={foldedActiveCount > 0 ? `${foldedActiveCount} active` : undefined}
+              className="md:contents"
+              contentClassName="grid grid-cols-2 gap-2 md:contents"
+            >
+              <MonthYearFilter transactions={transactions} className="col-span-2" />
+              <DateRangeFilter className="col-span-2" />
 
-            <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-              <SelectTrigger id="currency" className="w-full sm:w-[140px] h-9">
-                <SelectValue placeholder="All currencies" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All currencies</SelectItem>
-                {currencies.map(cur => (
-                  <SelectItem key={cur} value={cur}>
-                    {cur}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <AmountFilter value={amountFilter} onChange={setAmountFilter} className="col-span-2 w-full md:w-auto" />
 
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger id="category" className="w-full sm:w-[180px] h-9">
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All categories</SelectItem>
-                {categories.map(cat => (
-                  <SelectItem key={cat} value={cat} className="capitalize">
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                <SelectTrigger id="currency" className="w-full md:w-[140px] h-9">
+                  <SelectValue placeholder="All currencies" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All currencies</SelectItem>
+                  {currencies.map(cur => (
+                    <SelectItem key={cur} value={cur}>
+                      {cur}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger id="category" className="w-full md:w-[180px] h-9">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All categories</SelectItem>
+                  {categories.map(cat => (
+                    <SelectItem key={cat} value={cat} className="capitalize">
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </MobileFold>
           </div>
         </CardContent>
       </Card>
