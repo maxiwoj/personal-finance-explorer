@@ -20,6 +20,7 @@ import { DateRangeFilter, filterByDateRange } from '@/components/date-range-filt
 import { RecentTransactionsCarousel } from '@/components/recent-transactions-carousel'
 import { getCategoryTotals, getCumulativeSpending, type TimeSeriesGranularity } from '@/lib/analytics'
 import { useFilters } from '@/contexts/filter-context'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { AlertCircle, Info, Settings2, SlidersHorizontal, TrendingUp, Wallet } from 'lucide-react'
 import { MobileFold } from '@/components/mobile-fold'
 import type { Transaction } from '@/lib/types'
@@ -127,6 +128,7 @@ export default function DashboardPage() {
   const drafts = useRecurringDrafts()
   const { filters, setSelectedCategories, setSelectedDateRange } = useFilters()
   const { selectedMonths, selectedYears, selectedCategories, selectedDateRange } = filters
+  const isMobile = useIsMobile()
   const [showPreviousMonth, setShowPreviousMonth] = useState(false)
   const [limitComparisonToCurrentProgress, setLimitComparisonToCurrentProgress] = useState(false)
   const [showTransactionTimes, setShowTransactionTimes] = useState(false)
@@ -276,9 +278,9 @@ export default function DashboardPage() {
     : 'Daily mode keeps one cumulative point per day for a cleaner monthly view.'
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
+        <div className="hidden md:block">
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">Your spending overview</p>
         </div>
@@ -315,7 +317,7 @@ export default function DashboardPage() {
         transactions={transactions || []} 
         limit={5} 
         drafts={drafts}
-        className="pb-2" 
+        className="md:pb-2"
         onTransactionClick={setSelectedTransaction}
       />
 
@@ -370,11 +372,11 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
+        <Card className="max-md:gap-2">
           <CardHeader>
             <CardTitle>Spending by Category</CardTitle>
-            <CardDescription>Click a slice to filter by category</CardDescription>
+            <CardDescription className="hidden md:block">Click a slice to filter by category</CardDescription>
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
@@ -382,7 +384,9 @@ export default function DashboardPage() {
                 unit={defaultCurrency}
                 data={pieData}
                 onSliceClick={handlePieSliceClick}
-                height={350}
+                // A shorter canvas on phones: the ring is sized by the narrow width, extra height is empty space
+                height={isMobile ? 220 : 350}
+                compact={isMobile}
                 centerValue={`${totalSpending.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} ${defaultCurrency}`}
                 centerCaption="Total"
               />

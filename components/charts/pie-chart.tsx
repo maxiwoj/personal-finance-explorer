@@ -15,9 +15,11 @@ interface PieChartProps {
   // Shown inside the donut, e.g. the total of all slices
   centerValue?: string
   centerCaption?: string
+  // A thicker ring filling more of the canvas, for small screens
+  compact?: boolean
 }
 
-export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN', centerValue, centerCaption }: PieChartProps) {
+export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN', centerValue, centerCaption, compact = false }: PieChartProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartRef = useRef<ReactECharts>(null)
@@ -75,6 +77,8 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
       }),
       tooltip: {
         trigger: 'item',
+        // Kept inside the chart, so on a phone it never lands off screen
+        confine: true,
         backgroundColor: chartTheme.tooltipBackground,
         borderColor: chartTheme.tooltipBorder,
         borderWidth: 1,
@@ -86,7 +90,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
       series: [
         {
           type: 'pie',
-          radius: ['40%', '70%'],
+          radius: compact ? ['45%', '85%'] : ['40%', '70%'],
           center: ['50%', '50%'],
           avoidLabelOverlap: true,
           itemStyle: {
@@ -101,7 +105,8 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
             scale: true,
             scaleSize: isDark ? 4 : 6,
             label: {
-              show: true,
+              // The center already holds a label; outside the ring it gets cut off on narrow screens
+              show: !centerValue,
               color: chartTheme.emphasisText,
               fontSize: 14,
               fontWeight: 'bold',
@@ -127,7 +132,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
         },
       ],
     }),
-    [centerCaption, centerValue, chartTheme, data, isDark, unit]
+    [centerCaption, centerValue, chartTheme, compact, data, isDark, unit]
   )
 
   const handleClick = (params: { name?: string }) => {
