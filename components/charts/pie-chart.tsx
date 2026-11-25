@@ -12,9 +12,14 @@ interface PieChartProps {
   height?: number
   showLegend?: boolean
   unit?: string
+  // Shown inside the donut, e.g. the total of all slices
+  centerValue?: string
+  centerCaption?: string
+  // A thicker ring filling more of the canvas, for small screens
+  compact?: boolean
 }
 
-export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN' }: PieChartProps) {
+export function PieChart({ data, onSliceClick, height = 300, showLegend = true, unit = 'PLN', centerValue, centerCaption, compact = false }: PieChartProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartRef = useRef<ReactECharts>(null)
@@ -39,6 +44,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
       tooltipText: isDark ? '#e2e8f0' : '#0f172a',
       segmentBorder: isDark ? '#0f172a' : '#ffffff',
       emphasisText: isDark ? '#f8fafc' : '#0f172a',
+      captionText: isDark ? '#94a3b8' : '#64748b',
     }),
     [isDark]
   )
@@ -58,8 +64,21 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
   const option: EChartsOption = useMemo(
     () => ({
       animationDuration: 250,
+      ...(centerValue && {
+        title: {
+          text: centerValue,
+          subtext: centerCaption,
+          left: 'center',
+          top: 'middle',
+          itemGap: 4,
+          textStyle: { color: chartTheme.emphasisText, fontSize: 16, fontWeight: 'bold' },
+          subtextStyle: { color: chartTheme.captionText, fontSize: 11 },
+        },
+      }),
       tooltip: {
         trigger: 'item',
+        // Kept inside the chart, so on a phone it never lands off screen
+        confine: true,
         backgroundColor: chartTheme.tooltipBackground,
         borderColor: chartTheme.tooltipBorder,
         borderWidth: 1,
@@ -71,7 +90,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
       series: [
         {
           type: 'pie',
-          radius: ['40%', '70%'],
+          radius: compact ? ['45%', '85%'] : ['40%', '70%'],
           center: ['50%', '50%'],
           avoidLabelOverlap: true,
           itemStyle: {
@@ -86,7 +105,8 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
             scale: true,
             scaleSize: isDark ? 4 : 6,
             label: {
-              show: true,
+              // The center already holds a label; outside the ring it gets cut off on narrow screens
+              show: !centerValue,
               color: chartTheme.emphasisText,
               fontSize: 14,
               fontWeight: 'bold',
@@ -112,7 +132,7 @@ export function PieChart({ data, onSliceClick, height = 300, showLegend = true, 
         },
       ],
     }),
-    [chartTheme, data, isDark, unit]
+    [centerCaption, centerValue, chartTheme, compact, data, isDark, unit]
   )
 
   const handleClick = (params: { name?: string }) => {

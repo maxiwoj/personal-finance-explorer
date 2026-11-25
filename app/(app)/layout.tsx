@@ -64,11 +64,13 @@ export default function AppLayout({
         {children}
       </main>
       <Footer />
+      {/* The only way to /add from the app; /add stays a page as the installed app's start URL */}
       {pathname !== '/add' && (
         <Link
           href="/add"
           aria-label="Add transaction"
-          className="md:hidden fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+          title="Add transaction"
+          className="fixed bottom-5 right-5 md:bottom-8 md:right-8 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
         >
           <Plus className="h-6 w-6" />
         </Link>

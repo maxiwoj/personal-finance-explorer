@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Plus, Coins, WifiOff, Download, Repeat, Eraser } from 'lucide-react'
+import { LayoutDashboard, PieChart, List, LogOut, Menu, X, RefreshCw, AlertTriangle, FlaskConical, BarChart3, FileSpreadsheet, CircleUser, Coins, WifiOff, Download, Repeat, Eraser } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useReloadFinanceData, type FinanceDataScope } from '@/hooks/use-transactions'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -28,7 +28,6 @@ const navItems = [
   { href: '/categories', label: 'Categories', icon: PieChart },
   { href: '/yearly-summary', label: 'Yearly Summary', icon: BarChart3 },
   { href: '/transactions', label: 'Transactions', icon: List },
-  { href: '/add', label: 'Add', icon: Plus },
 ]
 
 function getReloadConfig(pathname: string, mode: 'google' | 'demo' | null): { scope: FinanceDataScope; idleLabel: string; loadingLabel: string } {
@@ -217,7 +216,12 @@ export function Nav() {
 
         <ThemeToggle className="hidden md:inline-flex" />
 
-        <ThemeToggle className="ml-auto md:hidden" />
+        {/* One tap on mobile instead of opening the menu first */}
+        <Button variant="ghost" size="sm" onClick={() => void handleReload()} disabled={isReloading} className="ml-auto md:hidden" title={reloadLabel} aria-label={reloadLabel}>
+          <RefreshCw className={cn('h-4 w-4', isReloading && 'animate-spin')} />
+        </Button>
+
+        <ThemeToggle className="md:hidden" />
 
         {renderAccountMenu('md:hidden')}
 
@@ -248,10 +252,6 @@ export function Nav() {
               </Link>
             )
           })}
-          <Button variant="outline" size="sm" onClick={() => void handleReload()} disabled={isReloading} className="w-full justify-start gap-3 px-3">
-            <RefreshCw className={cn('h-4 w-4', isReloading && 'animate-spin')} />
-            {reloadLabel}
-          </Button>
         </nav>
       )}
       {signOutDialog}
